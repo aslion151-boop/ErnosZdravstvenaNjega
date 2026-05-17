@@ -1,0 +1,2696 @@
+// ===============================
+// File: server.pg.cjs
+// Ernos backend (CommonJS) – PostgreSQL version (feature-parity)
+// ===============================
+try { require("dotenv").config(); } catch (_) {}
+
+const express = require("express");
+const cors = require("cors");
+const morgan = require("morgan");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const path = require("path");
+const { Pool } = require("pg");
+
+const app = express();
+app.set("trust proxy", 1);
+const PORT = parseInt(process.env.PORT || "5055", 10);
+const FRONTEND_DIR = process.env.FRONTEND_DIR || "frontend";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const PUBLIC_WEB_URL = (process.env.PUBLIC_WEB_URL || "").replace(/\/+$/, "");
+const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || "").replace(/\/+$/, "");
+
+// Example DATABASE_URL: postgres://user:pass@localhost:5432/ernos
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.PGSSL === "1" ? { rejectUnauthorized: false } : false,
+});
+
+if (JWT_SECRET === "dev-secret") {
+  console.warn("[warn] Using default JWT secret. Set JWT_SECRET in production.");
+}
+
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+app.use(morgan("dev"));
+app.use((req, res, next) => {
+  console.log("[req]", req.method, req.url);
+  next();
+});
+const path = require('path');
+
+// Serve the skin as /skin
+const skinDir = path.join(__dirname, '..', 'frontend', 'frontend-skin');
+app.use('/skin', express.static(skinDir));
+
+// --- NEW SKIN: serve its files FIRST at root ---
+const fs = require("fs");
+const skinDir = path.join(__dirname, "..", "frontend", "frontend-skin");
+
+// 1) Serve /styles.css, /app.js, etc. from the skin first
+app.use(express.static(skinDir));
+
+// 2) Make "/" return the skin's index.html
+app.get("/", (_req, res) => res.sendFile(path.join(skinDir, "index.html")));
+
+// 3) Keep your old frontend as a fallback (e.g., /app.html still works)
+app.use(express.static(FRONTEND_DIR));
+
+// 4) Diagnostics: check what’s being served
+app.get("/__static_diag", (_req, res) => {
+  const diag = {
+    __dirname,
+    FRONTEND_DIR,
+    skinDir,
+    skin_index_exists: fs.existsSync(path.join(skinDir, "index.html")),
+    skin_css_exists:   fs.existsSync(path.join(skinDir, "styles.css")),
+    skin_js_exists:    fs.existsSync(path.join(skinDir, "app.js")),
+  };
+  res.json(diag);
+});
+
+// 5) Kill any Service Workers that might be controlling "/" (old app)
+app.get("/__kill_sw", (_req, res) => {
+  res.type("html").send(`<!doctype html>
+<meta charset="utf-8">
+<title>Kill SW</title>
+<body style="font:14px system-ui;background:#0c1e3d;color:#f0f4fb;padding:24px">
+<h3>Unregistering any service workers…</h3>
+<pre id="out"></pre>
+<script>
+  (async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations?.() || [];
+      for (const r of regs) { await r.unregister(); }
+      document.getElementById('out').textContent =
+        'Done. Hard-refresh (Ctrl+F5) and reload /. ' + regs.length + ' SW unregistered.';
+    } catch (e) {
+      document.getElementById('out').textContent = 'No SW or failed: ' + (e && e.message || e);
+    }
+  })();
+</script>`);
+});
+
+console.log("[skin] default / from", skinDir);
+console.log("[static] fallback FRONTEND_DIR =", FRONTEND_DIR);
+
+
+/* ================= Helpers ================= */
+function nowISO() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+function makeToken(u) {
+  return jwt.sign(
+    {
+      id: u.id,
+      email: u.email,
+      role: u.role,
+      category: u.category,
+      title: u.title,
+      tenant_id: u.tenant_id,
+    },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+function tenantIdOf(req) {
+  return Number(req.user?.tenant_id || 0);
+}
+function rowsToCsv(rows) {
+  if (!rows || !rows.length) return "";
+  const keys = Object.keys(rows[0]);
+  const esc = (v) => {
+    const s = String(v == null ? "" : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return (
+    keys.join(",") +
+    "\n" +
+    rows.map((r) => keys.map((k) => esc(r[k])).join(",")).join("\n")
+  );
+}
+// ✅ makeTempPassword must be available to /admin/tenants
+function makeTempPassword(len = 10) {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < len; i++)
+    out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+/* ================= Tenant Config helpers ================= */
+const DEFAULT_CONFIG = {
+  schedules: {
+    fridge: { min_c: 2, max_c: 8, due_hours: 24, alert_by: "12:00" },
+    fire:   { panel_days: 7, extinguisher_days: 30, drill_days: 90 },
+    env_audit: { frequency_days: 30 },
+    alerts: {
+      visitors_overdue_hours: 3,
+      housekeeping_overdue_minutes: 60,
+      night_window: { start: "20:00", end: "07:00" }
+    }
+  },
+  access: {
+    fridge:     { view: ["ADMIN","NURSING","HOUSEKEEPING"], edit: ["ADMIN"] },
+    fire:       { view: ["ADMIN","MAINTENANCE"],            edit: ["ADMIN","MAINTENANCE"] },
+    env_audit:  { view: ["ADMIN","AUDITOR"],                edit: ["ADMIN","AUDITOR"] },
+    training:   { view: ["ADMIN"],                          edit: ["ADMIN"] },
+    activities: { view: ["ADMIN","RECEPTION"],              edit: ["ADMIN","RECEPTION"] },
+    visitors:   { view: ["ADMIN","RECEPTION"],              edit: ["ADMIN","RECEPTION"] },
+    issues:     { view: ["ADMIN","MAINTENANCE"],            edit: ["ADMIN","MAINTENANCE"] },
+    visits:     { view: ["ADMIN","NURSING","HOUSEKEEPING"], edit: ["ADMIN","HOUSEKEEPING"] }
+  }
+};
+
+function deepMerge(a, b){
+  if (!a || typeof a !== "object") return b;
+  const out = Array.isArray(a) ? a.slice() : { ...a };
+  for (const k of Object.keys(b || {})) {
+    if (b[k] && typeof b[k] === "object" && !Array.isArray(b[k])) {
+      out[k] = deepMerge(a[k] || {}, b[k]);
+    } else {
+      out[k] = b[k];
+    }
+  }
+  return out;
+}
+
+async function getTenantConfig(tid){
+  try{
+    const { rows } = await pool.query("SELECT data FROM tenant_config WHERE tenant_id=$1", [tid]);
+    const data = rows[0]?.data || {};
+    return deepMerge(DEFAULT_CONFIG, data || {});
+  }catch(_){
+    return DEFAULT_CONFIG;
+  }
+}
+
+function roleOf(req){ return String(req.user?.role || "").toUpperCase(); }
+function catOf(req){  return String(req.user?.category || "").toUpperCase(); }
+
+function canView(module, cfg, req){
+  const r = roleOf(req), c = catOf(req);
+  if (r === "ADMIN" || r === "ADMIN_GLOBAL") return true;
+  const allow = ((cfg.access || {})[module] || {}).view || [];
+  return allow.includes(r) || allow.includes(c);
+}
+function canEdit(module, cfg, req){
+  const r = roleOf(req), c = catOf(req);
+  if (r === "ADMIN" || r === "ADMIN_GLOBAL") return true;
+  const allow = ((cfg.access || {})[module] || {}).edit || [];
+  return allow.includes(r) || allow.includes(c);
+}
+
+/* ================= Auth middlewares ================= */
+async function auth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const parts = h.split(" ");
+  if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+    try {
+      const claims = jwt.verify(parts[1], JWT_SECRET);
+      // Load fresh snapshot of the user
+      const { rows } = await pool.query(
+        "SELECT id,name,email,role,category,title,tenant_id FROM users WHERE id=$1",
+        [claims.id]
+      );
+      if (!rows.length) return res.status(401).json({ error: "no user" });
+      const u = rows[0];
+      // ✅ Preserve tenant_id from the token (used after /admin/switch-tenant)
+      req.user = { ...u, tenant_id: claims.tenant_id ?? u.tenant_id };
+      return next();
+    } catch (e) {
+      return res.status(401).json({ error: "bad token" });
+    }
+  }
+  return res.status(401).json({ error: "no token" });
+}
+
+async function requireMaintenance(req, res, next) {
+  try {
+    const { rows } = await pool.query("SELECT * FROM users WHERE id=$1", [
+      req.user.id,
+    ]);
+    const u = rows[0];
+    const cat = String(u?.category || "").toUpperCase();
+    const role = String(u?.role || "").toUpperCase();
+    if (role === "ADMIN" || cat === "MAINTENANCE") return next();
+  } catch (_) {}
+  return res.status(403).json({ error: "forbidden" });
+}
+async function requireAdmin(req, res, next) {
+  try {
+    const { rows } = await pool.query("SELECT role FROM users WHERE id=$1", [
+      req.user.id,
+    ]);
+    const role = String(rows[0]?.role || "").toUpperCase();
+    if (role === "ADMIN" || role === "ADMIN_GLOBAL") return next();
+  } catch (_) {}
+  return res.status(403).json({ error: "forbidden" });
+}
+// === Fridge & Fire plugin (Windows-safe path) ===
+const setupFridgeFire = require(require("path").join(__dirname, "plugins", "fridge_fire.cjs"));
+setupFridgeFire({
+  app,
+  pool,
+  auth,
+  PUBLIC_API_URL,   // already defined in your server
+  // pass your existing helpers so behavior is identical:
+  nowISO,
+  tenantIdOf,
+  roleOf,
+  catOf,
+});
+
+/* ================= SSE (events) ================= */
+const clients = new Set();
+function sendEvent(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data || {})}\n\n`;
+  for (const res of clients) {
+    try {
+      res.write(payload);
+    } catch (_) {}
+  }
+}
+app.get("/events", (req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.flushHeaders?.();
+  res.write("event: ready\ndata: {}\n\n");
+  clients.add(res);
+  req.on("close", () => clients.delete(res));
+});
+
+/* ================= DB INIT / MIGRATIONS ================= */
+async function runMigrations() {
+  const sql = `
+  -- Tenants
+  CREATE TABLE IF NOT EXISTS tenants (
+    id   SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    slug TEXT UNIQUE
+  );
+
+  -- Users
+  CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    email TEXT UNIQUE,
+    password TEXT,
+    role TEXT,
+    category TEXT,
+    title TEXT,
+    tenant_id INTEGER REFERENCES tenants(id)
+  );
+
+  -- Locations
+  CREATE TABLE IF NOT EXISTS locations (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    type TEXT,
+    active BOOLEAN DEFAULT TRUE,
+    tenant_id INTEGER REFERENCES tenants(id)
+  );
+
+  -- QRCodes
+  CREATE TABLE IF NOT EXISTS qrcodes (
+    id SERIAL PRIMARY KEY,
+    token TEXT UNIQUE,
+    location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
+    tenant_id INTEGER REFERENCES tenants(id)
+  );
+
+  -- Checkins
+  CREATE TABLE IF NOT EXISTS checkins (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    checkin_at TIMESTAMPTZ,
+    checkout_at TIMESTAMPTZ,
+    note TEXT,
+    user_name TEXT,
+    user_category TEXT,
+    location_name TEXT,
+    tenant_id INTEGER REFERENCES tenants(id)
+  );
+
+  -- Visitors
+  CREATE TABLE IF NOT EXISTS visitors (
+    id SERIAL PRIMARY KEY,
+    primary_name TEXT,
+    names JSONB,
+    resident TEXT,
+    checkin_at TIMESTAMPTZ,
+    checkout_at TIMESTAMPTZ,
+    tenant_id INTEGER REFERENCES tenants(id)
+  );
+
+  -- Issues (now tenant-scoped)
+  CREATE TABLE IF NOT EXISTS issues (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    user_name TEXT,
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    location_name TEXT,
+    category TEXT,
+    text TEXT,
+    status TEXT,
+    accepted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    accepted_by_name TEXT,
+    accepted_at TIMESTAMPTZ,
+    maintenance_comment TEXT,
+    tenant_id INTEGER REFERENCES tenants(id)
+  );
+
+  -- Environmental Audit
+  CREATE TABLE IF NOT EXISTS env_questions (
+    id SERIAL PRIMARY KEY,
+    section TEXT,
+    text TEXT
+  );
+  CREATE TABLE IF NOT EXISTS env_audits (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    started_at TIMESTAMPTZ,
+    submitted_at TIMESTAMPTZ,
+    auditor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    auditor_name TEXT,
+    overall_score INTEGER,
+    status TEXT
+  );
+  CREATE TABLE IF NOT EXISTS env_audit_locations (
+    id SERIAL PRIMARY KEY,
+    audit_id INTEGER REFERENCES env_audits(id) ON DELETE CASCADE,
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    location_name TEXT
+  );
+  CREATE TABLE IF NOT EXISTS env_audit_answers (
+    id SERIAL PRIMARY KEY,
+    audit_loc_id INTEGER REFERENCES env_audit_locations(id) ON DELETE CASCADE,
+    question_id INTEGER REFERENCES env_questions(id) ON DELETE CASCADE,
+    answer TEXT,
+    comment TEXT
+  );
+-- Optional hardening: scope environmental audits by tenant
+ALTER TABLE env_audits ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+CREATE INDEX IF NOT EXISTS idx_env_audits_tenant ON env_audits(tenant_id);
+
+ALTER TABLE env_audit_locations ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+CREATE INDEX IF NOT EXISTS idx_env_audit_locations_tenant ON env_audit_locations(tenant_id);
+
+ALTER TABLE env_audit_answers ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+CREATE INDEX IF NOT EXISTS idx_env_audit_answers_tenant ON env_audit_answers(tenant_id);
+
+-- Backfill audit tenant_id from linked locations, where available
+UPDATE env_audits a
+SET tenant_id = l.tenant_id
+FROM env_audit_locations al
+JOIN locations l ON l.id = al.location_id
+WHERE al.audit_id = a.id AND (a.tenant_id IS NULL OR a.tenant_id=0);
+
+UPDATE env_audit_locations al
+SET tenant_id = l.tenant_id
+FROM locations l
+WHERE al.location_id = l.id AND (al.tenant_id IS NULL OR al.tenant_id=0);
+
+UPDATE env_audit_answers aa
+SET tenant_id = al.tenant_id
+FROM env_audit_locations al
+WHERE aa.audit_loc_id = al.id AND (aa.tenant_id IS NULL OR aa.tenant_id=0);
+
+  -- ================= NEW: per-site config & feature tables =================
+
+  CREATE TABLE IF NOT EXISTS tenant_config (
+    tenant_id   INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+    data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at  TIMESTAMPTZ
+  );
+
+  INSERT INTO tenant_config(tenant_id, data, updated_at)
+  SELECT t.id,
+         '{
+            "schedules":{
+              "fridge":{"min_c":2,"max_c":8,"due_hours":24,"alert_by":"12:00"},
+              "fire":{"panel_days":7,"extinguisher_days":30,"drill_days":90},
+              "env_audit":{"frequency_days":30},
+              "alerts":{
+                "visitors_overdue_hours":3,
+                "housekeeping_overdue_minutes":60,
+                "night_window":{"start":"20:00","end":"07:00"}
+              }
+            },
+            "access":{
+              "fridge":{"view":["ADMIN","NURSING","HOUSEKEEPING"],"edit":["ADMIN"]},
+              "fire":{"view":["ADMIN","MAINTENANCE"],"edit":["ADMIN","MAINTENANCE"]},
+              "env_audit":{"view":["ADMIN","AUDITOR"],"edit":["ADMIN","AUDITOR"]},
+              "training":{"view":["ADMIN"],"edit":["ADMIN"]},
+              "activities":{"view":["ADMIN","RECEPTION"],"edit":["ADMIN","RECEPTION"]},
+              "visitors":{"view":["ADMIN","RECEPTION"],"edit":["ADMIN","RECEPTION"]},
+              "issues":{"view":["ADMIN","MAINTENANCE"],"edit":["ADMIN","MAINTENANCE"]},
+              "visits":{"view":["ADMIN","NURSING","HOUSEKEEPING"],"edit":["ADMIN","HOUSEKEEPING"]}
+            }
+          }'::jsonb,
+         NOW()
+  FROM tenants t
+  WHERE NOT EXISTS (SELECT 1 FROM tenant_config c WHERE c.tenant_id = t.id);
+
+  CREATE TABLE IF NOT EXISTS fridge_logs (
+    id          SERIAL PRIMARY KEY,
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    taken_at    TIMESTAMPTZ,
+    temp_c      NUMERIC,
+    staff_role  TEXT,
+    tenant_id   INTEGER REFERENCES tenants(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_fridge_loc_time   ON fridge_logs (location_id, taken_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_fridge_tenant     ON fridge_logs (tenant_id);
+
+  CREATE TABLE IF NOT EXISTS fire_checks (
+    id          SERIAL PRIMARY KEY,
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    check_at    TIMESTAMPTZ,
+    kind        TEXT,   -- PANEL | EXTINGUISHER | DRILL
+    staff_role  TEXT,
+    note        TEXT,
+    tenant_id   INTEGER REFERENCES tenants(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_fire_loc_time     ON fire_checks (location_id, check_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_fire_tenant       ON fire_checks (tenant_id);
+
+  -- Helpful indexes
+  CREATE INDEX IF NOT EXISTS idx_checkins_open ON checkins (location_id) WHERE checkout_at IS NULL;
+
+  -- Fix visitors open index to be partial
+  DROP INDEX IF EXISTS idx_visitors_open;
+  CREATE INDEX IF NOT EXISTS idx_visitors_open ON visitors (checkout_at) WHERE checkout_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_issues_status ON issues (status);
+
+  -- Add missing tenant_id columns if tables existed before (idempotent)
+  ALTER TABLE users     ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+  ALTER TABLE locations ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+  ALTER TABLE qrcodes   ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+  ALTER TABLE checkins  ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+  ALTER TABLE visitors  ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+  ALTER TABLE issues    ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id);
+
+  -- Tenant indexes
+  CREATE INDEX IF NOT EXISTS idx_users_tenant     ON users(tenant_id);
+  CREATE INDEX IF NOT EXISTS idx_locations_tenant ON locations(tenant_id);
+  CREATE INDEX IF NOT EXISTS idx_qrcodes_tenant   ON qrcodes(tenant_id);
+  CREATE INDEX IF NOT EXISTS idx_checkins_tenant  ON checkins(tenant_id);
+  CREATE INDEX IF NOT EXISTS idx_visitors_tenant  ON visitors(tenant_id);
+  CREATE INDEX IF NOT EXISTS idx_issues_tenant    ON issues(tenant_id);
+
+  -- Backfill issues.tenant_id from location if missing
+  UPDATE issues i
+  SET tenant_id = l.tenant_id
+  FROM locations l
+  WHERE i.location_id = l.id
+    AND (i.tenant_id IS NULL OR i.tenant_id = 0);
+
+  -- Enforce unique per (audit_loc_id, question_id) to avoid duplicates
+-- 1) Remove duplicates first (keep newest id per pair)
+WITH ranked AS (
+  SELECT
+    id,
+    audit_loc_id,
+    question_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY audit_loc_id, question_id
+      ORDER BY id DESC
+    ) AS rn
+  FROM env_audit_answers
+)
+DELETE FROM env_audit_answers e
+USING ranked r
+WHERE e.id = r.id
+  AND r.rn > 1;
+
+-- 2) Add the unique constraint now that data is clean
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'env_audit_answers_unique'
+  ) THEN
+    ALTER TABLE env_audit_answers
+      ADD CONSTRAINT env_audit_answers_unique
+      UNIQUE (audit_loc_id, question_id);
+  END IF;
+END$$;
+  `;
+  await pool.query(sql);
+}
+// Ensure we have at least one tenant
+async function ensureDefaultTenant() {
+  const t = await pool.query("SELECT id FROM tenants ORDER BY id LIMIT 1");
+  if (!t.rows.length) {
+    const ins = await pool.query(
+      "INSERT INTO tenants(name,slug) VALUES ($1,$2) RETURNING id",
+      ["Default Tenant", "default-tenant"]
+    );
+    console.log("[seed] Default tenant created with id", ins.rows[0].id);
+  }
+}
+
+async function seedAdmin() {
+  const email = "admin@example.com";
+
+  // there is at least one tenant because ensureDefaultTenant() runs before this
+  const t = await pool.query("SELECT id FROM tenants ORDER BY id LIMIT 1");
+  const tenantId = t.rows[0].id;
+
+  const have = await pool.query(
+    "SELECT id, email, role, tenant_id FROM users WHERE LOWER(email)=LOWER($1)",
+    [email]
+  );
+  if (!have.rows.length) {
+    const hash = bcrypt.hashSync("Password123", 8);
+    await pool.query(
+      "INSERT INTO users(name,email,password,role,category,title,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+      ["Admin", email.toLowerCase(), hash, "ADMIN", "NURSING", "DON", tenantId]
+    );
+    console.log("[seed] Admin created:", email);
+  } else {
+    const u = have.rows[0];
+    if (String(u.role || "").toUpperCase() !== "ADMIN") {
+      await pool.query("UPDATE users SET role='ADMIN' WHERE id=$1", [u.id]);
+      console.log("[seed] Existing user promoted to ADMIN:", email);
+    }
+    if (!u.tenant_id) {
+      await pool.query("UPDATE users SET tenant_id=$1 WHERE id=$2", [
+        tenantId,
+        u.id,
+      ]);
+      console.log("[seed] Admin tenant_id backfilled to", tenantId);
+    }
+  }
+
+  if (process.env.FORCE_ADMIN_RESET === "1") {
+    const hash = bcrypt.hashSync("Password123", 8);
+    await pool.query("UPDATE users SET password=$1 WHERE email=$2", [
+      hash,
+      email,
+    ]);
+    console.log("[seed] Admin password reset to default.");
+  }
+}
+async function seedSuperadmin() {
+  const email = (process.env.SUPERADMIN_EMAIL || "").trim().toLowerCase();
+  if (!email) return; // no superadmin seeding requested
+
+  const pass = (process.env.SUPERADMIN_PASSWORD || "SuperAdmin123").trim();
+  const have = await pool.query(
+    "SELECT id, role FROM users WHERE LOWER(email)=LOWER($1)",
+    [email]
+  );
+  const hash = bcrypt.hashSync(pass, 8);
+
+  if (!have.rows.length) {
+    await pool.query(
+      `INSERT INTO users(name,email,password,role,category,title,tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      ["Superadmin", email, hash, "ADMIN_GLOBAL", "NURSING", "DON", null] // tenant_id stays NULL
+    );
+    console.log("[seed] Superadmin created:", email);
+  } else {
+    const u = have.rows[0];
+    if (String(u.role || "").toUpperCase() !== "ADMIN_GLOBAL") {
+      await pool.query(
+        "UPDATE users SET role='ADMIN_GLOBAL', password=$1 WHERE LOWER(email)=LOWER($2)",
+        [hash, email]
+      );
+      console.log("[seed] Existing user promoted to ADMIN_GLOBAL:", email);
+    }
+  }
+}
+
+async function seedQuestions(){
+  // Expanded HIQA-style list (>=15). Add more here safely.
+  const list = [
+    ["General Environment","Are all areas visibly clean and free from clutter?"],
+    ["General Environment","Is the environment free from unpleasant odours?"],
+    ["General Environment","Is lighting adequate across areas?"],
+    ["General Environment","Is ventilation adequate in all areas?"],
+
+    ["Health & Safety","Are fire exits clearly marked and unobstructed?"],
+    ["Health & Safety","Are fire doors functioning and not propped open?"],
+    ["Health & Safety","Is emergency lighting tested and working?"],
+
+    ["Infection Prevention & Control","Are alcohol hand gel dispensers available and filled?"],
+    ["Infection Prevention & Control","Are sinks with soap and paper towels available where needed?"],
+    ["Infection Prevention & Control","Is PPE available and stored appropriately?"],
+
+    ["Maintenance & Equipment","Is equipment clean and in good working order?"],
+    ["Maintenance & Equipment","Evidence of regular servicing/maintenance of equipment?"],
+
+    ["Resident Comfort & Dignity","Are bedrooms personalised and homely?"],
+    ["Resident Comfort & Dignity","Are bathrooms clean, accessible, and private?"],
+
+    // A few more common HIQA-aligned items (optional but helpful)
+    ["Medication & Sharps","Are medicines and sharps stored securely?"],
+    ["Waste Management","Is clinical and domestic waste segregated and disposed correctly?"],
+    ["Staff & Visitors","Are hand hygiene notices visible and up to date?"],
+    ["Records & Signage","Are safety notices and incident reporting info clearly displayed?"],
+    ["Slips/Trips/Falls","Are floors dry, even, and free from trailing cables?"],
+    ["Fire Safety","Are extinguishers present, accessible, and in-date?"]
+  ];
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const [section, text] of list) {
+      await client.query(
+        `INSERT INTO env_questions(section, text)
+         SELECT $1, $2
+         WHERE NOT EXISTS (
+           SELECT 1 FROM env_questions WHERE section = $1 AND text = $2
+         )`,
+        [section, text]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+
+/* ================= Utility ================= */
+function normalizeToken(raw) {
+  let t = String(raw || "").trim();
+  try {
+    t = decodeURIComponent(t);
+  } catch (_) {}
+  if (t.startsWith("#")) t = t.slice(1);
+  if (/^https?:\/\//i.test(t)) {
+    const parts = t.split("#");
+    t = parts[1] || t.split("/").pop();
+  }
+  if (/^ci\//i.test(t)) t = t.slice(3);
+  if (/^reception\//i.test(t)) t = t.slice(10);
+  if (/^env\//i.test(t)) t = t.slice(4);
+  if (t.includes("/")) t = t.split("/").pop();
+  return t;
+}
+
+/* ================= AUTH ================= */
+app.post("/auth/login", async (req, res) => {
+  // ✅ accept either email or username (UI fallback)
+  let { email, username, password } = req.body || {};
+  const login = String((email || username) || "").trim().toLowerCase();
+  if (!login || !password) return res.status(400).json({ error: "missing" });
+
+  const { rows } = await pool.query(
+    "SELECT * FROM users WHERE LOWER(email)=LOWER($1)",
+    [login]
+  );
+  const u = rows[0];
+  if (!u) return res.status(401).json({ error: "no user" });
+  if (!bcrypt.compareSync(password, u.password || ""))
+    return res.status(401).json({ error: "bad pass" });
+
+  const token = makeToken(u); // includes tenant_id now
+  res.json({ token });
+});
+
+/* ================= ME ================= */
+app.get("/me", auth, async (req, res) => {
+  // Use req.user (already honors switched tenant_id), then look up tenant meta
+  const u = req.user;
+  let tenant_name = null,
+    tenant_slug = null;
+  if (u.tenant_id) {
+    const { rows: t } = await pool.query(
+      "SELECT name, slug FROM tenants WHERE id=$1",
+      [u.tenant_id]
+    );
+    if (t.length) {
+      tenant_name = t[0].name;
+      tenant_slug = t[0].slug;
+    }
+  }
+  res.json({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    category: u.category,
+    title: u.title,
+    tenant_id: u.tenant_id,
+    tenant_name,
+    tenant_slug,
+  });
+});
+
+/* ================= USERS ================= */
+/* ================= USERS ================= */
+function extractNumericId(req){
+  const cand = [req.params?.id, req.body?.id, req.query?.id]
+    .map(v => parseInt(String(v||''), 10))
+    .find(n => Number.isFinite(n) && n > 0);
+  return cand || 0;
+}
+
+app.get("/users", auth, async (req, res) => {
+  const role = String(req.user?.role || "").toUpperCase();
+  let rows;
+  if (role === "ADMIN_GLOBAL") {
+    ({ rows } = await pool.query(
+      "SELECT id,name,email,role,category,title,tenant_id FROM users ORDER BY id"
+    ));
+  } else {
+    const tid = tenantIdOf(req);
+    ({ rows } = await pool.query(
+      "SELECT id,name,email,role,category,title FROM users WHERE tenant_id=$1 ORDER BY id",
+      [tid]
+    ));
+  }
+  if (String((req.query || {}).csv || "") === "1") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=users.csv");
+    return res.send(rowsToCsv(rows));
+  }
+  res.json({ items: rows });
+});
+
+// Create or update a user by email within the same tenant
+app.post("/users", auth, async (req, res) => {
+  try {
+    let { name, email, password, role, category, title } = req.body || {};
+    email = String(email || "").trim().toLowerCase();
+    if (!name || !email) return res.status(400).json({ error: "missing" });
+
+    const tid = tenantIdOf(req);
+    if (!tid) return res.status(403).json({ error: "no tenant" });
+
+    const { rows: exist } = await pool.query(
+      "SELECT id, tenant_id FROM users WHERE LOWER(email)=LOWER($1)",
+      [email]
+    );
+
+    const normRole  = (role ? String(role) : "USER").toUpperCase();
+    const normCat   = (category ? String(category) : "NURSING").toUpperCase();
+    const normTitle = title || "";
+
+    if (exist.length) {
+      const u = exist[0];
+      if (u.tenant_id && Number(u.tenant_id) !== Number(tid)) {
+        return res.status(409).json({ error: "email already exists in another tenant" });
+      }
+      const fields = [], params = [];
+      fields.push(`name=$${fields.length + 1}`);     params.push(String(name));
+      fields.push(`role=$${fields.length + 1}`);     params.push(normRole);
+      fields.push(`category=$${fields.length + 1}`); params.push(normCat);
+      fields.push(`title=$${fields.length + 1}`);    params.push(normTitle);
+      fields.push(`tenant_id=$${fields.length + 1}`); params.push(tid);
+      if (password && String(password).trim()) {
+        const hash = bcrypt.hashSync(String(password).trim(), 8);
+        fields.push(`password=$${fields.length + 1}`); params.push(hash);
+      }
+      params.push(u.id);
+      await pool.query(`UPDATE users SET ${fields.join(", ")} WHERE id=$${params.length}`, params);
+      sendEvent("users", {});
+      return res.json({ id: u.id, updated: true });
+    }
+
+    if (!password || !String(password).trim()) {
+      return res.status(400).json({ error: "missing password" });
+    }
+    const hash = bcrypt.hashSync(String(password).trim(), 8);
+    const ins = await pool.query(
+      "INSERT INTO users(name,email,password,role,category,title,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+      [name, email, hash, normRole, normCat, normTitle, tid]
+    );
+    sendEvent("users", {});
+    return res.json({ id: ins.rows[0].id, created: true });
+  } catch (e) {
+    if (String(e?.message || "").includes("duplicate key value")) {
+      return res.status(409).json({ error: "email already exists" });
+    }
+    console.error("[users POST] error:", e);
+    return res.status(500).json({ error: "server error" });
+  }
+});
+
+// Update
+async function updateUserHandler(req, res){
+  try {
+    const meRole = String(req.user?.role || "").toUpperCase();
+    const tid    = tenantIdOf(req);
+    const id     = extractNumericId(req);
+    if (!id) return res.status(400).json({ error: "bad id" });
+
+    const { rows: tRows } = await pool.query(
+      "SELECT id, tenant_id, role FROM users WHERE id=$1",
+      [id]
+    );
+    if (!tRows.length) return res.status(404).json({ error: "no user" });
+    const target = tRows[0];
+    const tRole  = String(target.role || "").toUpperCase();
+
+    if (meRole !== "ADMIN_GLOBAL" && Number(target.tenant_id) !== Number(tid))
+      return res.status(403).json({ error: "forbidden (different tenant)" });
+    if (tRole === "ADMIN_GLOBAL" && meRole !== "ADMIN_GLOBAL")
+      return res.status(403).json({ error: "cannot edit ADMIN_GLOBAL" });
+
+    let { name, email, role, category, title } = (req.body || {});
+    const fields = [], params = [];
+    if (name != null)     { fields.push(`name=$${fields.length+1}`);     params.push(String(name)); }
+    if (email != null)    { fields.push(`email=$${fields.length+1}`);    params.push(String(email).toLowerCase()); }
+    if (role != null)     { fields.push(`role=$${fields.length+1}`);     params.push(String(role).toUpperCase()); }
+    if (category != null) { fields.push(`category=$${fields.length+1}`); params.push(String(category).toUpperCase()); }
+    if (title  != null)   { fields.push(`title=$${fields.length+1}`);    params.push(String(title)); }
+    if (!fields.length) return res.json({ ok: true, updated: 0 });
+
+    params.push(id);
+    await pool.query(`UPDATE users SET ${fields.join(", ")} WHERE id=$${params.length}`, params);
+    sendEvent("users", {});
+    res.json({ ok: true, updated: 1 });
+  } catch (e) {
+    if (String(e?.message||"").includes("duplicate key value"))
+      return res.status(409).json({ error: "email already in use" });
+    console.error("[users update] error:", e);
+    res.status(500).json({ error: "server error" });
+  }
+}
+app.patch("/users/:id",        auth, updateUserHandler);
+app.post ("/users/:id/update", auth, updateUserHandler);
+app.post ("/users/update",     auth, updateUserHandler);
+
+// Delete (+ legacy aliases)
+const deleteUserHandler = async (req, res) => {
+  try {
+    const meRole = String(req.user?.role || "").toUpperCase();
+    const meId   = Number(req.user?.id || 0);
+    const tid    = tenantIdOf(req);
+    const id     = extractNumericId(req);
+    if (!id) return res.status(400).json({ error: "bad id" });
+
+    const { rows: tRows } = await pool.query(
+      "SELECT id, tenant_id, role FROM users WHERE id=$1",
+      [id]
+    );
+    if (!tRows.length) return res.status(404).json({ error: "no user" });
+    const target = tRows[0];
+    const targetRole = String(target.role || "").toUpperCase();
+
+    if (targetRole === "ADMIN_GLOBAL") return res.status(403).json({ error: "cannot delete ADMIN_GLOBAL" });
+    if (meId === id)                  return res.status(400).json({ error: "cannot delete your own account" });
+    if (meRole !== "ADMIN_GLOBAL" && Number(target.tenant_id) !== Number(tid))
+      return res.status(403).json({ error: "forbidden (different tenant)" });
+
+    const del = await pool.query("DELETE FROM users WHERE id=$1", [id]);
+    if (del.rowCount === 0) return res.status(404).json({ error: "no user" });
+
+    sendEvent("users", {});
+    res.json({ ok: true, deleted: id });
+  } catch (e) {
+    console.error("[delete user] error:", e);
+    res.status(500).json({ error: "server error" });
+  }
+};
+app.delete("/users/:id", auth, deleteUserHandler);
+app.post  ("/users/:id/delete", auth, deleteUserHandler);
+app.post  ("/users/delete",      auth, deleteUserHandler);
+app.get   ("/users/delete/:id",  auth, deleteUserHandler);
+
+app.post("/users/me/password", auth, async (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword)
+    return res.status(400).json({ error: "missing" });
+  const { rows } = await pool.query("SELECT * FROM users WHERE id=$1", [
+    req.user.id,
+  ]);
+  const u = rows[0];
+  if (!u) return res.status(404).json({ error: "no user" });
+  if (!bcrypt.compareSync(oldPassword, u.password || ""))
+    return res.status(400).json({ error: "bad pass" });
+  const hash = bcrypt.hashSync(newPassword, 8);
+  await pool.query("UPDATE users SET password=$1 WHERE id=$2", [
+    hash,
+    req.user.id,
+  ]);
+  res.json({ ok: true });
+});
+
+// Quick “make auditor” helper
+app.post("/users/make-auditor", auth, async (req, res) => {
+  try {
+    let { email, name, password, title } = req.body || {};
+    email = String(email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: "missing email" });
+    const tid = tenantIdOf(req);
+    if (!tid) return res.status(403).json({ error: "no tenant" });
+
+    const { rows: exist } = await pool.query(
+      "SELECT id, tenant_id FROM users WHERE LOWER(email)=LOWER($1)",
+      [email]
+    );
+
+    if (exist.length) {
+      const u = exist[0];
+      if (u.tenant_id && Number(u.tenant_id) !== Number(tid)) {
+        return res.status(409).json({ error: "email already exists in another tenant" });
+      }
+      await pool.query(
+        "UPDATE users SET category='AUDITOR', role=COALESCE(NULLIF(role,''),'USER'), title=COALESCE($1,title), tenant_id=COALESCE(tenant_id,$2) WHERE id=$3",
+        [title || null, tid, u.id]
+      );
+      sendEvent("users", {});
+      return res.json({ ok: true, id: u.id, updated: true });
+    } else {
+      if (!name) return res.status(400).json({ error: "missing name" });
+      if (!password) return res.status(400).json({ error: "missing password" });
+      const hash = bcrypt.hashSync(String(password).trim(), 8);
+      const ins = await pool.query(
+        "INSERT INTO users(name,email,password,role,category,title,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+        [name, email, hash, "USER", "AUDITOR", title || "", tid]
+      );
+      sendEvent("users", {});
+      return res.json({ ok: true, id: ins.rows[0].id, created: true });
+    }
+  } catch (e) {
+    if (String(e?.message || "").includes("duplicate key value")) {
+      return res.status(409).json({ error: "email already exists" });
+    }
+    console.error("[make-auditor] error:", e);
+    res.status(500).json({ error: "server error" });
+  }
+});
+
+
+/* ================= LOCATIONS ================= */
+app.get("/locations", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { rows } = await pool.query(
+    "SELECT id,name,type,active FROM locations WHERE tenant_id=$1 ORDER BY id",
+    [tid]
+  );
+  if (String((req.query || {}).csv || "") === "1") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=locations.csv");
+    return res.send(rowsToCsv(rows));
+  }
+  res.json({ items: rows });
+});
+
+app.post("/locations", auth, async (req, res) => {
+  const { name, type } = req.body || {};
+  if (!name || !type) return res.status(400).json({ error: "missing" });
+
+  const tid = tenantIdOf(req);
+  if (!tid) return res.status(403).json({ error: "no tenant" });
+
+  const { rows } = await pool.query(
+    "INSERT INTO locations(tenant_id,name,type,active) VALUES ($1,$2,$3,TRUE) RETURNING id",
+    [tid, name, String(type).toUpperCase()]
+  );
+  res.json({ id: rows[0].id });
+});
+
+app.patch("/locations/:id", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { active } = req.body || {};
+  await pool.query(
+    "UPDATE locations SET active=$1 WHERE id=$2 AND tenant_id=$3",
+    [!!active, req.params.id, tid]
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/locations/:id", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "DELETE FROM qrcodes WHERE location_id=$1 AND tenant_id=$2",
+      [req.params.id, tid]
+    );
+    await client.query(
+      "DELETE FROM locations WHERE id=$1 AND tenant_id=$2",
+      [req.params.id, tid]
+    );
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+
+/* ================= QR / NFC ================= */
+function makeTokenString() {
+  return (
+    Math.random().toString(36).slice(2, 10) +
+    Math.random().toString(36).slice(2, 6)
+  );
+}
+app.post("/qrcodes", auth, requireAdmin, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { locationId } = req.body || {};
+  if (!locationId) return res.status(400).json({ error: "locationId required" });
+
+  // Ensure location belongs to this tenant
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1 AND tenant_id=$2",
+    [locationId, tid]
+  );
+  if (!locRows.length) return res.status(404).json({ error: "no location" });
+
+  const tok = makeTokenString();
+  await pool.query(
+    "INSERT INTO qrcodes(token,location_id,tenant_id) VALUES ($1,$2,$3)",
+    [tok, locationId, tid]
+  );
+
+  const hostProto = req.get("x-forwarded-proto") || (req.secure ? "https" : "http");
+  const hostName  = req.get("host");
+  const computed  = `${hostProto}://${hostName}`;
+  const base      = (PUBLIC_API_URL || computed).replace(/\/+$/, "");
+
+  const tapAuto = base + "/tap/u/" + tok;
+  const tapEnv  = base + "/tap/env/" + tok;
+  const tapCi   = base + "/tap/ci/" + tok;
+  const tapRec  = base + "/tap/reception/" + tok;
+
+  const loc = locRows[0];
+  const type = String(loc.type || "").toUpperCase();
+
+  const urlTapFridge = base + "/tap/fridge/" + tok;
+  const urlTapFire   = base + "/tap/fire/"   + tok;
+
+  let tap = tapAuto;
+  if (type === "RECEPTION")      tap = tapRec;
+  else if (type === "FRIDGE")    tap = urlTapFridge;
+  else if (type === "FIRE")      tap = urlTapFire;
+
+  res.json({
+    token: tok,
+    urlTap: tap,
+    urlTapAuto: tapAuto,
+    urlTapEnv: tapEnv,
+    urlTapCi: tapCi,
+    urlTapReception: tapRec,
+    urlTapFridge,
+    urlTapFire
+  });
+});
+
+/* ================= TAP PERFORM (HK/Nursing/Maint) ================= */
+app.post("/tap/ci/perform", auth, async (req, res) => {
+  const { token } = req.body || {};
+  const norm = normalizeToken(token || "");
+  const { rows: qrRows } = await pool.query(
+    "SELECT * FROM qrcodes WHERE token=$1",
+    [norm]
+  );
+  if (!qrRows.length) return res.status(404).json({ error: "bad token" });
+  const qr = qrRows[0];
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1",
+    [qr.location_id]
+  );
+  if (!locRows.length) return res.status(404).json({ error: "no location" });
+  const loc = locRows[0];
+  const { rows: userRows } = await pool.query(
+    "SELECT * FROM users WHERE id=$1",
+    [req.user.id]
+  );
+  if (!userRows.length) return res.status(401).json({ error: "no user" });
+  const u = userRows[0];
+
+  // Is there an open check-in by this user at this location?
+  const { rows: openRows } = await pool.query(
+    `SELECT * FROM checkins
+     WHERE user_id=$1 AND location_id=$2 AND checkout_at IS NULL
+     ORDER BY id DESC LIMIT 1`,
+    [u.id, loc.id]
+  );
+  if (openRows.length) {
+    const open = openRows[0];
+    const end = nowISO();
+    await pool.query("UPDATE checkins SET checkout_at=$1 WHERE id=$2", [
+      end,
+      open.id,
+    ]);
+    const { rows: d } = await pool.query(
+      `SELECT EXTRACT(EPOCH FROM (COALESCE(checkout_at, NOW()) - checkin_at))/60 AS minutes
+       FROM checkins WHERE id=$1`,
+      [open.id]
+    );
+    const durationMin =
+      d[0]?.minutes != null
+        ? Math.max(0, Math.round(Number(d[0].minutes)))
+        : null;
+    sendEvent("visits", {});
+    return res.json({
+      ok: true,
+      action: "checkout",
+      role: u.category || "",
+      locationName: loc.name,
+      started_at: open.checkin_at,
+      ended_at: end,
+      durationMin,
+    });
+  } else {
+    const tid = loc.tenant_id || tenantIdOf(req);
+    const ins = await pool.query(
+      `INSERT INTO checkins(user_id,location_id,checkin_at,checkout_at,note,user_name,user_category,location_name,tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [
+        u.id,
+        loc.id,
+        nowISO(),
+        null,
+        "",
+        u.name,
+        u.category || "",
+        loc.name,
+        tid,
+      ]
+    );
+    sendEvent("visits", {});
+    return res.json({
+      ok: true,
+      action: "checkin",
+      role: u.category || "",
+      locationName: loc.name,
+      checkinId: ins.rows[0].id,
+      started_at: nowISO(),
+    });
+  }
+});
+
+/* Nursing single-tap (no toggle) */
+app.post("/tap/nursing/check", auth, async (req, res) => {
+  const { token } = req.body || {};
+  const norm = normalizeToken(token || "");
+  const { rows: qrRows } = await pool.query(
+    "SELECT * FROM qrcodes WHERE token=$1",
+    [norm]
+  );
+  if (!qrRows.length) return res.status(404).json({ error: "bad token" });
+  const qr = qrRows[0];
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1",
+    [qr.location_id]
+  );
+  if (!locRows.length) return res.status(404).json({ error: "no location" });
+  const loc = locRows[0];
+  const { rows: userRows } = await pool.query(
+    "SELECT * FROM users WHERE id=$1",
+    [req.user.id]
+  );
+  if (!userRows.length) return res.status(401).json({ error: "no user" });
+  const u = userRows[0];
+  const tid = loc.tenant_id || tenantIdOf(req);
+  await pool.query(
+    `INSERT INTO checkins(user_id,location_id,checkin_at,checkout_at,note,user_name,user_category,location_name,tenant_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [u.id, loc.id, nowISO(), null, "", u.name, "NURSING", loc.name, tid]
+  );
+  sendEvent("visits", {});
+  res.json({ ok: true, locationName: loc.name });
+});
+
+/* Auditor-only TAP page and Universal TAP routes: keep original HTML pages */
+
+/* ================= CHECKINS ================= */
+app.get("/checkins", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { csv, from, to, category, locationId, userId } = req.query || {};
+
+  const filters = ["tenant_id=$1"];
+  const params = [tid];
+
+  if (from) {
+    params.push(from);
+    filters.push(`checkin_at >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    filters.push(`(checkout_at <= $${params.length} OR checkout_at IS NULL)`);
+  }
+  if (category) {
+    params.push(String(category).toUpperCase());
+    filters.push(`UPPER(user_category) = $${params.length}`);
+  }
+  if (locationId) {
+    params.push(parseInt(String(locationId), 10));
+    filters.push(`location_id = $${params.length}`);
+  }
+  if (userId) {
+    params.push(parseInt(String(userId), 10));
+    filters.push(`user_id = $${params.length}`);
+  }
+
+  const where = "WHERE " + filters.join(" AND ");
+
+  if (String(csv || "") === "1") {
+    const { rows } = await pool.query(
+      `SELECT * FROM checkins ${where} ORDER BY id DESC`,
+      params
+    );
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=checkins.csv");
+    return res.send(rowsToCsv(rows));
+  }
+
+  const { rows } = await pool.query(
+    `SELECT * FROM checkins ${where} AND checkout_at IS NULL ORDER BY id DESC`,
+    params
+  );
+  res.json({ items: rows });
+});
+
+app.post("/checkin", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { locationId, note } = req.body || {};
+  if (!locationId) return res.status(400).json({ error: "locationId required" });
+
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1 AND tenant_id=$2",
+    [locationId, tid]
+  );
+  if (!locRows.length) return res.status(404).json({ error: "no location" });
+  const loc = locRows[0];
+
+  const { rows: uRows } = await pool.query("SELECT * FROM users WHERE id=$1", [
+    req.user.id,
+  ]);
+  const u = uRows[0];
+
+  const ins = await pool.query(
+    `INSERT INTO checkins(user_id,location_id,checkin_at,checkout_at,note,user_name,user_category,location_name,tenant_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+    [
+      u.id,
+      loc.id,
+      nowISO(),
+      null,
+      note || "",
+      u.name,
+      u.category || "",
+      loc.name,
+      tid,
+    ]
+  );
+  sendEvent("visits", {});
+  res.json({ id: ins.rows[0].id });
+});
+
+app.post("/checkout", auth, async (req, res) => {
+  const { checkinId } = req.body || {};
+  const { rows } = await pool.query("SELECT * FROM checkins WHERE id=$1", [
+    checkinId,
+  ]);
+  const row = rows[0];
+  if (!row) return res.status(404).json({ error: "no checkin" });
+  const end = nowISO();
+  await pool.query("UPDATE checkins SET checkout_at=$1 WHERE id=$2", [
+    end,
+    checkinId,
+  ]);
+  const { rows: d } = await pool.query(
+    `SELECT EXTRACT(EPOCH FROM (COALESCE(checkout_at, NOW()) - checkin_at))/60 AS minutes FROM checkins WHERE id=$1`,
+    [checkinId]
+  );
+  const durationMin =
+    d[0]?.minutes != null
+      ? Math.max(0, Math.round(Number(d[0].minutes)))
+      : null;
+  sendEvent("visits", {});
+  res.json({ ok: true, durationMin });
+});
+
+/* ================= VISITORS (Reception) ================= */
+app.get("/visitors", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { csv, from, to } = req.query || {};
+  const filters = ["tenant_id=$1"];
+  const params = [tid];
+  if (from) {
+    params.push(from);
+    filters.push(`checkin_at >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    filters.push(
+      `(checkout_at <= $${params.length} OR checkout_at IS NULL)`
+    );
+  }
+  const where = "WHERE " + filters.join(" AND ");
+  const { rows } = await pool.query(
+    `SELECT * FROM visitors ${where} ORDER BY id DESC`,
+    params
+  );
+  if (String(csv || "") === "1") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=visitors.csv"
+    );
+    return res.send(rowsToCsv(rows));
+  }
+  res.json({ items: rows });
+});
+app.post("/visitors/:id/checkout", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const id = req.params.id;
+  const { rows: vrows } = await pool.query(
+    "SELECT * FROM visitors WHERE id=$1 AND tenant_id=$2",
+    [id, tid]
+  );
+  const v = vrows[0];
+  if (!v) return res.status(404).json({ error: "no visitor" });
+  if (v.checkout_at) {
+    const names = (() => {
+      try {
+        return JSON.parse(v.names || "[]");
+      } catch (_) {
+        return [];
+      }
+    })();
+    const { rows: d } = await pool.query(
+      `SELECT EXTRACT(EPOCH FROM (checkout_at - checkin_at))/60 AS minutes FROM visitors WHERE id=$1`,
+      [id]
+    );
+    const mins =
+      d[0]?.minutes != null
+        ? Math.max(0, Math.round(Number(d[0].minutes)))
+        : null;
+    return res.json({
+      ok: true,
+      durationMin: mins,
+      message: `Goodbye ${
+        names.length ? names.join(", ") : v.primary_name
+      }. Thank you for your visit!`,
+    });
+  }
+  await pool.query(
+    "UPDATE visitors SET checkout_at=NOW() WHERE id=$1 AND tenant_id=$2",
+    [id, tid]
+  );
+  sendEvent("visitors", {});
+  const { rows: w } = await pool.query(
+    "SELECT * FROM visitors WHERE id=$1 AND tenant_id=$2",
+    [id, tid]
+  );
+  const nv = w[0];
+  const names = (() => {
+    try {
+      return JSON.parse(nv.names || "[]");
+    } catch (_) {
+      return [];
+    }
+  })();
+  const { rows: d } = await pool.query(
+    `SELECT EXTRACT(EPOCH FROM (checkout_at - checkin_at))/60 AS minutes FROM visitors WHERE id=$1`,
+    [id]
+  );
+  const mins =
+    d[0]?.minutes != null
+      ? Math.max(0, Math.round(Number(d[0].minutes)))
+      : null;
+  res.json({
+    ok: true,
+    durationMin: mins,
+    message: `Goodbye ${
+      names.length ? names.join(", ") : nv.primary_name
+    }. Thank you for your visit!`,
+  });
+});
+app.get("/visitors/signatures.zip", auth, async (req, res) => {
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader(
+    "Content-Disposition",
+    "attachment; filename=visitor_signatures.zip"
+  );
+  res.end(
+    Buffer.from([80, 75, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) // empty zip
+  );
+});
+
+/* ================= ALERTS ================= */
+/* On superadmin (ADMIN_GLOBAL) "site": no nursing visits or alerts needed.
+   We simply return an empty payload for ADMIN_GLOBAL to keep UI simple. */
+app.get("/alerts", auth, async (req, res) => {
+  const role = String(req.user?.role || "").toUpperCase();
+  if (role === "ADMIN_GLOBAL") {
+    return res.json({
+      housekeeping_overdue: [],
+      visitors_overdue: [],
+      nursing_night_due: [],
+    });
+  }
+
+  const tid = tenantIdOf(req);
+
+  const { rows: hkOpen } = await pool.query(
+    `SELECT *, CAST(EXTRACT(EPOCH FROM (COALESCE(checkout_at, NOW()) - checkin_at))/60 AS INT) AS minutes_open
+     FROM checkins WHERE tenant_id=$1 AND checkout_at IS NULL AND UPPER(user_category)='HOUSEKEEPING'`,
+    [tid]
+  );
+  const housekeeping_overdue = hkOpen
+    .filter((r) => (r.minutes_open || 0) > 60)
+    .map((r) => ({
+      id: r.id,
+      location_name: r.location_name,
+      checkin_at: r.checkin_at,
+      minutes_open: r.minutes_open,
+    }));
+
+  const { rows: vOpen } = await pool.query(
+    `SELECT *, (EXTRACT(EPOCH FROM (COALESCE(checkout_at, NOW()) - checkin_at))/3600.0) AS hours_open
+     FROM visitors WHERE tenant_id=$1 AND checkout_at IS NULL`,
+    [tid]
+  );
+  const visitors_overdue = vOpen
+    .filter((v) => (v.hours_open || 0) > 3)
+    .map((v) => ({
+      id: v.id,
+      primary_name: v.primary_name,
+      resident: v.resident,
+      hours_open: Number(v.hours_open),
+    }));
+
+  const hour = new Date().getUTCHours();
+  const isNight = hour >= 20 || hour < 7;
+  let nursing_night_due = [];
+  if (isNight) {
+    const { rows: lack } = await pool.query(
+      `SELECT l.name AS location_name
+       FROM locations l
+       WHERE l.tenant_id=$1 AND NOT EXISTS(
+         SELECT 1 FROM checkins c
+         WHERE c.location_id = l.id
+           AND c.tenant_id=$1
+           AND UPPER(c.user_category)='NURSING'
+           AND (NOW() - c.checkin_at) <= INTERVAL '60 minutes'
+       )
+       LIMIT 10`,
+      [tid]
+    );
+    nursing_night_due = lack.map((x) => ({ location_name: x.location_name }));
+  }
+  res.json({ housekeeping_overdue, visitors_overdue, nursing_night_due });
+});
+
+/* ================= ENV AUDIT ================= */
+app.get("/env/questions", auth, async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT * FROM env_questions ORDER BY id"
+  );
+  res.json({ items: rows });
+});
+app.post("/env/audits", auth, async (req, res) => {
+  const { name } = req.body || {};
+  const { rows: uRows } = await pool.query("SELECT * FROM users WHERE id=$1", [
+    req.user.id,
+  ]);
+  const u = uRows[0];
+  const { rows } = await pool.query(
+    "INSERT INTO env_audits(name,started_at,auditor_id,auditor_name,status) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+    [
+      name || "Audit " + nowISO().slice(0, 10),
+      nowISO(),
+      u?.id || null,
+      u?.name || u?.email || "",
+      "open",
+    ]
+  );
+  res.json({ id: rows[0].id });
+});
+app.get("/env/audits", auth, async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT * FROM env_audits ORDER BY id DESC"
+  );
+  res.json({ items: rows });
+});
+app.get("/env/audits/:id", auth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { rows: aRows } = await pool.query(
+    "SELECT * FROM env_audits WHERE id=$1",
+    [id]
+  );
+  const a = aRows[0];
+  if (!a) return res.status(404).json({ error: "no audit" });
+  const { rows: locs } = await pool.query(
+    "SELECT * FROM env_audit_locations WHERE audit_id=$1",
+    [id]
+  );
+  const locEnriched = [];
+  for (const l of locs) {
+    const { rows: ans } = await pool.query(
+      "SELECT * FROM env_audit_answers WHERE audit_loc_id=$1",
+      [l.id]
+    );
+    const total = ans.length;
+    const yesCount = ans.filter(
+      (x) => String(x.answer || "").toUpperCase() === "YES"
+    ).length;
+    const score = total ? Math.round((yesCount / total) * 100) : null;
+    locEnriched.push({ ...l, total, yes_count: yesCount, score });
+  }
+  const responses = {};
+  for (const l of locEnriched) {
+    const { rows } = await pool.query(
+      `SELECT q.id AS question_id, q.section, q.text, a.answer, a.comment
+       FROM env_questions q
+       LEFT JOIN env_audit_answers a ON a.question_id=q.id AND a.audit_loc_id=$1
+       ORDER BY q.id`,
+      [l.id]
+    );
+    responses[l.id] = rows;
+  }
+  res.json({ audit: a, locations: locEnriched, responses });
+});
+// UI aliases -> /audit/:auditId
+app.get("/env/audit/:id/ui",  (req, res) => res.redirect(302, "/audit/" + encodeURIComponent(req.params.id)));
+app.get("/env/audits/:id/ui", (req, res) => res.redirect(302, "/audit/" + encodeURIComponent(req.params.id)));
+app.get("/env/audits/:id/csv", auth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { rows: aRows } = await pool.query(
+    "SELECT * FROM env_audits WHERE id=$1",
+    [id]
+  );
+  const a = aRows[0];
+  if (!a) return res.status(404).json({ error: "no audit" });
+  const { rows } = await pool.query(
+    `SELECT
+      al.audit_id                         AS audit_id,
+      a.name                              AS audit_name,
+      a.started_at, a.submitted_at, a.auditor_id, a.auditor_name,
+      a.overall_score, a.status,
+      al.id                                AS audit_loc_id,
+      al.location_id, al.location_name,
+      q.id                                 AS question_id,
+      q.section, q.text                    AS question,
+      aa.answer, aa.comment
+    FROM env_audit_locations al
+    JOIN env_audits a ON a.id = al.audit_id
+    CROSS JOIN env_questions q
+    LEFT JOIN env_audit_answers aa ON aa.audit_loc_id = al.id AND aa.question_id = q.id
+    WHERE al.audit_id = $1
+    ORDER BY al.id, q.id`,
+    [id]
+  );
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=audit_${id}.csv`
+  );
+  res.send(rowsToCsv(rows));
+});
+app.post("/env/tap", auth, async (req, res) => {
+  const { token, auditId } = req.body || {};
+  const norm = normalizeToken(token || "");
+  const { rows: qrRows } = await pool.query(
+    "SELECT * FROM qrcodes WHERE token=$1",
+    [norm]
+  );
+  if (!qrRows.length) return res.status(404).json({ error: "bad token" });
+  const qr = qrRows[0];
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1",
+    [qr.location_id]
+  );
+  const loc = locRows[0];
+  const { rows: exist } = await pool.query(
+    "SELECT id FROM env_audit_locations WHERE audit_id=$1 AND location_id=$2",
+    [auditId, qr.location_id]
+  );
+  const auditLocId =
+    exist[0]?.id ||
+    (
+      await pool.query(
+        "INSERT INTO env_audit_locations(audit_id,location_id,location_name) VALUES ($1,$2,$3) RETURNING id",
+        [auditId, qr.location_id, loc?.name || "Loc " + qr.location_id]
+      )
+    ).rows[0].id;
+  res.json({
+    auditLocId,
+    locationId: qr.location_id,
+    locationName: loc?.name || "Loc " + qr.location_id,
+  });
+});
+app.post("/env/answer", auth, async (req, res) => {
+  const { auditLocId, questionId, answer, comment } = req.body || {};
+  if (!auditLocId || !questionId || !answer)
+    return res.status(400).json({ error: "missing" });
+  // Upsert per (audit_loc_id, question_id)
+  await pool.query(
+    `INSERT INTO env_audit_answers(audit_loc_id,question_id,answer,comment)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (audit_loc_id,question_id)
+     DO UPDATE SET answer=EXCLUDED.answer, comment=EXCLUDED.comment`,
+    [auditLocId, questionId, String(answer).trim(), comment || ""]
+  );
+  const { rows } = await pool.query(
+    "SELECT answer FROM env_audit_answers WHERE audit_loc_id=$1",
+    [auditLocId]
+  );
+  const total = rows.length;
+  const yes = rows.filter(
+    (x) => String(x.answer || "").toUpperCase() === "YES"
+  ).length;
+  const score = total ? Math.round((yes / total) * 100) : null;
+  res.json({ ok: true, locationScore: score, compliant: score === 100 });
+});
+app.post("/env/submit", auth, async (req, res) => {
+  const { auditId } = req.body || {};
+  const { rows: locs } = await pool.query(
+    "SELECT id FROM env_audit_locations WHERE audit_id=$1",
+    [auditId]
+  );
+  let total = 0,
+    yes = 0;
+  for (const l of locs) {
+    const { rows: ans } = await pool.query(
+      "SELECT answer FROM env_audit_answers WHERE audit_loc_id=$1",
+      [l.id]
+    );
+    total += ans.length;
+    yes += ans.filter(
+      (x) => String(x.answer || "").toUpperCase() === "YES"
+    ).length;
+  }
+  const pct = total ? Math.round((yes / total) * 100) : 0;
+  await pool.query(
+    "UPDATE env_audits SET submitted_at=$1, overall_score=$2, status=$3 WHERE id=$4",
+    [nowISO(), pct, "done", auditId]
+  );
+  res.json({ overall: pct });
+});
+// Mobile-friendly audit runner UI (YES=green, NO=red, sticky submit)
+app.get("/audit/:auditId", (req, res) => {
+  const api = PUBLIC_API_URL || "";
+  const auditId = String(req.params.auditId || "").trim();
+
+  res.status(200).type("html").send(`<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ernos • Audit #${auditId}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{ --bg:#0c1e3d; --panel:#0f274f; --text:#f0f4fb; --muted:#b8c5e6; --brand:#2e8af6; --yes:#15803d; --no:#b91c1c; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif}
+  header{display:flex;align-items:center;gap:10px;padding:12px 16px}
+  header img{height:40px}
+  main{max-width:720px;margin:0 auto;padding:0 12px 100px}
+  .card{background:var(--panel);border:1px solid #173060;border-radius:16px;padding:12px;margin:12px 0}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select,button{font:inherit}
+  select{width:100%;padding:10px;border-radius:10px;border:1px solid #35405a;background:#2a3040;color:#f0f4fb}
+  .q{padding:10px;border-radius:12px;border:1px solid #2a3966;margin:8px 0}
+  .sec{font-weight:700;color:#cdd7f0;margin-bottom:4px}
+  .txt{margin:4px 0 10px;color:#dfe7ff}
+  .btns{display:flex;gap:8px}
+  .btn{flex:1;padding:10px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:700;
+     transition:background .12s ease, transform .05s ease}
+.btn:active{transform:scale(.98)}
+.yes{background:#1f5135;}          /* idle green */
+.yes.active{background:#22c55e;}   /* bright green when selected */
+.no{background:#6b1a1a;}           /* idle red */
+.no.active{background:#ef4444;}    /* bright red when selected */
+  .muted{color:var(--muted)}
+  .sticky{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(180deg, rgba(12,30,61,0), rgba(12,30,61,1) 24px);padding:16px}
+  .action{max-width:720px;margin:0 auto;background:#0f274f;border:1px solid #173060;border-radius:14px;padding:10px;display:flex;gap:10px;align-items:center}
+  .action .submit{flex:1;padding:12px;border-radius:10px;border:0;background:var(--brand);color:white;font-weight:800}
+  .score{font-weight:700}
+  #msg{margin:8px 0;padding:10px;border-radius:10px;border:1px solid #2f4f8a;background:#0b2146;color:#b8c5e6;display:none}
+  .ok{border-color:#215f41;background:#103622;color:#eafff4}
+  .err{border-color:#6e3030;background:#3d1717;color:#ffd6d6}
+</style>
+<body>
+  <header>
+  <img src="/icons/logo.png" onerror="this.src='/icons/icon.svg'">
+  <h2 style="margin:0">Environmental Audit</h2>
+  <button id="btnCsv" style="margin-left:auto;padding:8px 10px;border-radius:10px;border:0;background:#2e8af6;color:#fff;font-weight:700">
+    Download CSV
+  </button>
+</header>
+  <main>
+    <div id="msg"></div>
+
+    <div class="card">
+      <div class="row">
+        <label for="locSel" class="muted">Audit #${auditId} • Location</label>
+        <select id="locSel"></select>
+      </div>
+      <div class="muted" id="locHint">Tip: scan a location tag first if the list is empty.</div>
+    </div>
+
+    <div id="qWrap"></div>
+  </main>
+
+  <div class="sticky">
+    <div class="action">
+      <div class="muted">Overall: <span id="overall" class="score">–</span></div>
+      <button class="submit" id="btnSubmit">Submit Audit</button>
+    </div>
+  </div>
+<script>
+(function(){
+  const API = ${JSON.stringify(api)} || location.origin;
+  const AUDIT_ID = ${JSON.stringify(auditId)};
+// CSV download (runner page)
+(function(){
+  const btn = document.getElementById('btnCsv');
+  if(!btn) return;
+  let JWT = ""; try{ JWT = localStorage.getItem('ernosToken') || ""; }catch(_){}
+  btn.onclick = function(){
+    if(!JWT){ alert("Sign in first in the app, then reload."); return; }
+    fetch((API||location.origin) + "/env/audits/" + encodeURIComponent(AUDIT_ID) + "/csv", {
+      headers: { "Authorization": "Bearer " + JWT }
+    })
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
+    .then(function(b){
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = "audit_" + AUDIT_ID + ".csv";
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    })
+    .catch(function(e){ alert(e && e.message ? e.message : String(e)); });
+  };
+})();
+
+// Keep Android/iOS back inside the app when opened directly
+(function(){
+  const cameFromApp = /\/app\.html/i.test(document.referrer || "");
+  if (cameFromApp) return;
+  try {
+    history.pushState({stub:1}, "", "#audit");
+    window.addEventListener("popstate", function(){
+      const api = (API || location.origin);
+      location.replace("/app.html?api=" + encodeURIComponent(api) + "&nosw=1");
+    });
+  } catch(_){}
+})();
+
+  const $ = (id)=>document.getElementById(id);
+  const msg = (t, cls='')=>{ const el=$('msg'); if(!t){ el.style.display='none'; el.textContent=''; el.className=''; return; } el.textContent=t; el.className=cls; el.style.display=''; };
+
+  // Get JWT from app
+  let JWT = ''; try{ JWT = localStorage.getItem('ernosToken') || ''; }catch(_){}
+  if(!JWT){ msg('You are not signed in. Open the Ernos app, sign in (Auditor/Admin), then reload.', 'err'); }
+
+  // Helpers
+  function authFetch(url, opts){
+    opts = opts || {}; opts.headers = Object.assign({}, opts.headers || {}, { 'Authorization': 'Bearer ' + JWT });
+    return fetch(url, opts).then(r => r.json().then(j => { if(!r.ok) throw new Error(j && j.error || ('HTTP '+r.status)); return j; }));
+  }
+  function renderQuestions(loc, responses){
+    const wrap = $('qWrap'); wrap.innerHTML = '';
+    const map = new Map(); // qid -> answer
+    (responses||[]).forEach(r => { if(r.question_id) map.set(String(r.question_id), (r.answer||'').toUpperCase()); });
+
+    // group by section
+    const groups = {};
+    (responses||[]).forEach(r=>{
+      const s = r.section || 'General'; (groups[s] = groups[s] || []).push(r);
+    });
+
+    Object.keys(groups).forEach(section=>{
+      groups[section].forEach(r=>{
+        const q = document.createElement('div'); q.className = 'q'; q.dataset.qid = r.question_id;
+        const sec = document.createElement('div'); sec.className = 'sec'; sec.textContent = section;
+        const txt = document.createElement('div'); txt.className = 'txt'; txt.textContent = r.text;
+
+        const btns = document.createElement('div'); btns.className = 'btns';
+        const yes = document.createElement('button'); yes.className = 'btn yes'; yes.textContent = 'YES'; yes.setAttribute('aria-pressed','false');
+        const no  = document.createElement('button');  no.className = 'btn no';  no.textContent  = 'NO';  no.setAttribute('aria-pressed','false');
+
+
+        function setActive(val){
+  const y = (val==='YES'), n = (val==='NO');
+  yes.classList.toggle('active', y);
+  no.classList.toggle('active',  n);
+  yes.setAttribute('aria-pressed', String(y));
+  no.setAttribute('aria-pressed',  String(n));
+ }
+
+        setActive(map.get(String(r.question_id)) || '');
+
+        yes.onclick = ()=>{
+  const prev = yes.classList.contains('active') ? 'YES' : (no.classList.contains('active') ? 'NO' : '');
+  setActive('YES'); // instant visual feedback
+  saveAnswer(r.question_id, 'YES', yes, no, prev);
+ };
+no.onclick  = ()=>{
+  const prev = yes.classList.contains('active') ? 'YES' : (no.classList.contains('active') ? 'NO' : '');
+  setActive('NO');  // instant visual feedback
+  saveAnswer(r.question_id, 'NO',  yes, no, prev);
+ };
+
+        btns.appendChild(yes); btns.appendChild(no);
+        q.appendChild(sec); q.appendChild(txt); q.appendChild(btns);
+        wrap.appendChild(q);
+      });
+    });
+  }
+
+  let CURRENT_LOC_ID = 0;     // env_audit_locations.id (audit_loc_id)
+  let OVERALL = '–';
+
+  function refreshOverall(){
+    // recompute from active buttons
+    const qs = Array.from(document.querySelectorAll('.q'));
+    if(!qs.length){ $('overall').textContent = '–'; return; }
+    let total = 0, yes = 0;
+    qs.forEach(q=>{
+      const y = q.querySelector('.yes'); const n = q.querySelector('.no');
+      if(y.classList.contains('active') || n.classList.contains('active')){
+        total++; if(y.classList.contains('active')) yes++;
+      }
+    });
+    OVERALL = total ? Math.round(yes/total*100)+'%' : '–';
+    $('overall').textContent = OVERALL;
+  }
+<script>
+  // ...
+  function saveAnswer(qid, val, yesBtn, noBtn, prevVal){
+    if(!CURRENT_LOC_ID){ msg('No location selected. Please scan a location tag onto this audit first.', 'err'); return; }
+    authFetch(API + '/env/answer', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ auditLocId: CURRENT_LOC_ID, questionId: qid, answer: val, comment: '' })
+    })
+    .then(()=>{ refreshOverall(); msg('', ''); })
+    .catch(e=>{
+      // revert visuals using the passed buttons (no out-of-scope refs)
+      const y = (prevVal==='YES'), n = (prevVal==='NO');
+      yesBtn.classList.toggle('active', y);
+      noBtn .classList.toggle('active',  n);
+      yesBtn.setAttribute('aria-pressed', String(y));
+      noBtn .setAttribute('aria-pressed', String(n));
+      refreshOverall();
+      msg(e.message||String(e), 'err');
+    });
+  }
+  // ...
+</script>
+  // Load audit & questions
+  Promise.all([
+    authFetch(API + '/env/questions'),
+    authFetch(API + '/env/audits/' + encodeURIComponent(AUDIT_ID))
+  ])
+  .then(([qs, audit])=>{
+    const locSel = $('locSel');
+    locSel.innerHTML = '';
+    (audit.locations||[]).forEach(l=>{
+      const opt = document.createElement('option');
+      opt.value = String(l.id); // audit_loc_id
+      opt.textContent = l.location_name || ('Loc ' + l.location_id);
+      locSel.appendChild(opt);
+    });
+
+    if(!audit.locations || !audit.locations.length){
+      $('locHint').textContent = 'No locations yet. Scan a location tag (Auditor TAP) to add.';
+      $('qWrap').innerHTML = '';
+      refreshOverall();
+      return;
+    }
+    $('locHint').textContent = '';
+
+    function loadLoc(auditLocId){
+      CURRENT_LOC_ID = Number(auditLocId);
+      const resp = (audit.responses && audit.responses[auditLocId]) || [];
+      // Join the master question list with any saved answers so all show up
+      const joined = (qs.items||[]).map(q=>{
+        const r = (resp.find(x=>x.question_id===q.id) || {});
+        return { question_id: q.id, section: q.section, text: q.text, answer: r.answer||null, comment: r.comment||null };
+      });
+      renderQuestions(auditLocId, joined);
+      refreshOverall();
+    }
+
+    // default: first location
+    const firstId = String(audit.locations[0].id);
+    locSel.value = firstId;
+    locSel.onchange = ()=> loadLoc(locSel.value);
+    loadLoc(firstId);
+  })
+  .catch(e=> msg(e.message||String(e), 'err'));
+
+  // Submit audit
+  $('btnSubmit').onclick = ()=>{
+    authFetch(API + '/env/submit', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ auditId: Number(AUDIT_ID) })
+    })
+    .then(j=>{
+      msg('Audit submitted. Overall score: ' + (j && typeof j.overall==='number' ? (j.overall+'%') : OVERALL), 'ok');
+    })
+    .catch(e=> msg(e.message||String(e), 'err'));
+  };
+})();
+</script>
+</body></html>`);
+});
+
+// Start new audit (aliases for legacy UIs)
+app.post("/env/audits/start", auth, (req, res) => {
+  req.url = "/env/audits"; req.method = "POST"; app._router.handle(req, res, ()=>{});
+});
+app.post("/env/audit/start",  auth, (req, res) => {
+  req.url = "/env/audits"; req.method = "POST"; app._router.handle(req, res, ()=>{});
+});
+// Some really old UIs used GET to start (not ideal, but we support it)
+app.get("/env/audit/start", auth, async (req, res) => {
+  const name = String(req.query?.name || "").trim();
+  const { rows: uRows } = await pool.query("SELECT * FROM users WHERE id=$1", [req.user.id]);
+  const u = uRows[0];
+  const ins = await pool.query(
+    "INSERT INTO env_audits(name,started_at,auditor_id,auditor_name,status) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+    [ name || ("Audit " + nowISO().slice(0,10)), nowISO(), u?.id || null, u?.name || u?.email || "", "open" ]
+  );
+  res.json({ ok:true, id: ins.rows[0].id });
+});
+
+/* ================= Issues (Maintenance) ================= */
+app.post("/issues", auth, async (req, res) => {
+  const { token, text } = req.body || {};
+  if (!text || !String(text).trim())
+    return res.status(400).json({ error: "text required" });
+  const norm = normalizeToken(token || "");
+  const { rows: qrRows } = await pool.query(
+    "SELECT * FROM qrcodes WHERE token=$1",
+    [norm]
+  );
+  if (!qrRows.length) return res.status(404).json({ error: "bad token" });
+  const qr = qrRows[0];
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1",
+    [qr.location_id]
+  );
+  const loc = locRows[0];
+  const { rows: uRows } = await pool.query("SELECT * FROM users WHERE id=$1", [
+    req.user.id,
+  ]);
+  const u = uRows[0];
+  const now = nowISO();
+  const tenantId = loc?.tenant_id || tenantIdOf(req);
+  const { rows } = await pool.query(
+    `INSERT INTO issues(created_at,updated_at,user_id,user_name,location_id,location_name,category,text,status,tenant_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+    [
+      now,
+      now,
+      u?.id || null,
+      u?.name || u?.email || "",
+      qr.location_id,
+      loc?.name || "",
+      "MAINTENANCE",
+      String(text).trim(),
+      "OPEN",
+      tenantId,
+    ]
+  );
+  sendEvent("issues", {});
+  res.json({ ok: true, id: rows[0].id });
+});
+app.post("/issues/:id/accept", auth, requireMaintenance, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const tid = tenantIdOf(req);
+  const { rows: uRows } = await pool.query("SELECT * FROM users WHERE id=$1", [
+    req.user.id,
+  ]);
+  const u = uRows[0];
+  const now = nowISO();
+  await pool.query(
+    `UPDATE issues
+     SET status='ACCEPTED', accepted_by=$1, accepted_by_name=$2, accepted_at=$3, updated_at=$3
+     WHERE id=$4 AND tenant_id=$5 AND (status IS NULL OR status='OPEN')`,
+    [u?.id || null, u?.name || u?.email || "", now, id, tid]
+  );
+  sendEvent("issues", {});
+  res.json({ ok: true });
+});
+app.post("/issues/:id/resolve", auth, requireMaintenance, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const tid = tenantIdOf(req);
+  const { comment } = req.body || {};
+  const now = nowISO();
+  await pool.query(
+    `UPDATE issues
+     SET status='RESOLVED', maintenance_comment=COALESCE($1, maintenance_comment), updated_at=$2
+     WHERE id=$3 AND tenant_id=$4`,
+    [String(comment || "").trim(), now, id, tid]
+  );
+  sendEvent("issues", {});
+  res.json({ ok: true });
+});
+app.post("/issues/:id/comment", auth, requireMaintenance, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const tid = tenantIdOf(req);
+  const { comment } = req.body || {};
+  const now = nowISO();
+  await pool.query(
+    "UPDATE issues SET maintenance_comment=$1, updated_at=$2 WHERE id=$3 AND tenant_id=$4",
+    [String(comment || "").trim(), now, id, tid]
+  );
+  sendEvent("issues", {});
+  res.json({ ok: true });
+});
+app.get("/issues", auth, async (req, res) => {
+  const tid = tenantIdOf(req);
+  const { csv, from, to, category, locationId, userId } = req.query || {};
+  const filters = ["tenant_id=$1"];
+  const params = [tid];
+  if (from) {
+    params.push(from);
+    filters.push(`created_at >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    filters.push(`created_at <= $${params.length}`);
+  }
+  if (category) {
+    params.push(String(category).toUpperCase());
+    filters.push(`UPPER(category) = $${params.length}`);
+  }
+  if (locationId) {
+    params.push(parseInt(String(locationId), 10));
+    filters.push(`location_id = $${params.length}`);
+  }
+  if (userId) {
+    params.push(parseInt(String(userId), 10));
+    filters.push(`user_id = $${params.length}`);
+  }
+  const where = "WHERE " + filters.join(" AND ");
+  const { rows } = await pool.query(
+    `SELECT * FROM issues ${where} ORDER BY id DESC`,
+    params
+  );
+  if (String(csv || "") === "1") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=issues.csv");
+    return res.send(rowsToCsv(rows));
+  }
+  res.json({ items: rows });
+});
+
+/* ================= Reception (public) ================= */
+app.post("/reception/checkin", async (req, res) => {
+  const { token, primaryName, names, resident, signature } = req.body || {};
+  const norm = normalizeToken(token || "");
+  if (!primaryName) return res.status(400).json({ error: "primaryName required" });
+
+  // Tenant is inferred from QR
+  const { rows: qrRows } = await pool.query(
+    "SELECT location_id, tenant_id FROM qrcodes WHERE token=$1",
+    [norm]
+  );
+  if (!qrRows.length) return res.status(404).json({ error: "bad token" });
+  const { location_id, tenant_id } = qrRows[0];
+
+  const { rows: locRows } = await pool.query(
+    "SELECT * FROM locations WHERE id=$1 AND tenant_id=$2",
+    [location_id, tenant_id]
+  );
+  if (!locRows.length) return res.status(404).json({ error: "no location" });
+  const loc = locRows[0];
+  if (String(loc?.type || "").toUpperCase() !== "RECEPTION")
+    return res.status(400).json({ error: "not a RECEPTION tag" });
+
+  const allNames =
+    Array.isArray(names) && names.length ? names : [String(primaryName)];
+  const ins = await pool.query(
+    "INSERT INTO visitors(primary_name,names,resident,checkin_at,tenant_id) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+    [
+      String(primaryName).trim(),
+      JSON.stringify(allNames),
+      String(resident || "").trim(),
+      nowISO(),
+      tenant_id,
+    ]
+  );
+
+  sendEvent("visitors", {});
+  res.json({
+    ok: true,
+    id: ins.rows[0].id,
+    locationName: loc?.name,
+    names: allNames,
+    resident: String(resident || ""),
+    message: `Welcome ${allNames.join(", ")}`,
+  });
+});
+
+app.post("/reception/checkout", async (req, res) => {
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ error: "id required" });
+  const { rows } = await pool.query("SELECT * FROM visitors WHERE id=$1", [id]);
+  const v = rows[0];
+  if (!v) return res.status(404).json({ error: "no visitor" });
+  if (v.checkout_at) {
+    const names = (() => {
+      try {
+        return JSON.parse(v.names || "[]");
+      } catch (_) {
+        return [];
+      }
+    })();
+    const { rows: d } = await pool.query(
+      `SELECT EXTRACT(EPOCH FROM (checkout_at - checkin_at))/60 AS minutes FROM visitors WHERE id=$1`,
+      [id]
+    );
+    const mins =
+      d[0]?.minutes != null
+        ? Math.max(0, Math.round(Number(d[0].minutes)))
+        : null;
+    return res.json({
+      ok: true,
+      durationMin: mins,
+      message: `Goodbye ${
+        names.length ? names.join(", ") : v.primary_name
+      }. Thank you for your visit!`,
+    });
+  }
+  await pool.query("UPDATE visitors SET checkout_at=NOW() WHERE id=$1", [id]);
+  sendEvent("visitors", {});
+  const { rows: w } = await pool.query(
+    "SELECT * FROM visitors WHERE id=$1",
+    [id]
+  );
+  const nv = w[0];
+  const names = (() => {
+    try {
+      return JSON.parse(nv.names || "[]");
+    } catch (_) {
+      return [];
+    }
+  })();
+  const { rows: d } = await pool.query(
+    `SELECT EXTRACT(EPOCH FROM (checkout_at - checkin_at))/60 AS minutes FROM visitors WHERE id=$1`,
+    [id]
+  );
+  const mins =
+    d[0]?.minutes != null
+      ? Math.max(0, Math.round(Number(d[0].minutes)))
+      : null;
+  res.json({
+    ok: true,
+    durationMin: mins,
+    message: `Goodbye ${
+      names.length ? names.join(", ") : nv.primary_name
+    }. Thank you for your visit!`,
+  });
+});
+
+/* ================= TAP PAGES (HTML) ================= */
+
+app.get("/tap/u/:token", (req, res) => {
+  const tok = String(req.params.token || "").trim();
+  const api = PUBLIC_API_URL || "";
+  const web = PUBLIC_WEB_URL || "";
+
+  res
+    .status(200)
+    .type("html")
+    .send(`<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ernos • Tap</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{ --bg:#0c1e3d; --panel:#0f274f; --text:#f0f4fb; --muted:#b8c5e6; --brand:#2e8af6; }
+  body{font:14px system-ui,sans-serif;padding:24px;max-width:540px;margin:0 auto;background:var(--bg);color:var(--text)}
+  #msg{padding:10px;border-radius:10px}
+  .ok{background:#103622;color:#fff;border:1px solid #215f41}
+  .error{background:#3d1717;color:#fff;border:1px solid #6e3030}
+  .muted{color:var(--muted)}
+</style>
+<body>
+  <header><img src="/icons/logo.png" alt="Ernos" style="height:56px" onerror="this.src='/icons/icon.svg'"></header>
+  <div id="msg" class="muted">Processing…</div>
+<script>
+(function(){
+  var TOKEN=${JSON.stringify(tok)};
+  var API=${JSON.stringify(api)}; if(!API) API = location.origin;
+  var JWT=''; try{ JWT=localStorage.getItem('ernosToken')||''; }catch(_){}
+  // Back button → return to the app
+  try{
+    var API=${JSON.stringify(api)}||location.origin;
+    var APP_URL = "/app.html?api="+encodeURIComponent(API||location.origin)+"&nosw=1";
+    history.replaceState({view:"tap-u"}, "");
+    history.pushState({view:"tap-u-2"}, "");
+    window.addEventListener("popstate", function(){
+      location.replace(APP_URL);
+    });
+  }catch(_){}
+  function setMsg(t,k){ var el=document.getElementById('msg'); el.className=(k==='ok'?'ok':k==='error'?'error':'muted'); el.textContent=t; }
+  if(!JWT){ setMsg('You are not signed in. Open the Ernos app, sign in, then tap again.', 'error'); return; }
+  function decodeJwt(t){ try{ var p=t.split('.')[1]||''; while(p.length%4)p+='='; return JSON.parse(atob(p)); }catch(_){ return {}; } }
+  var c=decodeJwt(JWT); var role=String(c.role||'').toUpperCase(); var cat=String(c.category||'').toUpperCase();
+  var target = (role==='ADMIN'||cat==='AUDITOR') ? '/tap/env/'+TOKEN : (cat==='NURSING' ? '/tap/nursing/'+TOKEN : '/tap/ci/'+TOKEN);
+  location.replace(target);
+})();
+</script>
+</body></html>`);
+});
+
+app.get("/tap/ci/:token", (req, res) => {
+  const token = req.params.token || "";
+  const api = PUBLIC_API_URL || "";
+  const web = PUBLIC_WEB_URL || "";
+  res
+    .status(200)
+    .type("html")
+    .send(`<!doctype html>
+<html><meta name="viewport" content="width=device-width, initial-scale=1">
+<body style="font-family:system-ui;max-width:640px;margin:24px auto;padding:0 12px;background:#0c1e3d;color:#f0f4fb">
+  <header style="display:flex;align-items:center;gap:8px;margin:12px 0 10px">
+    <img src="/icons/logo.png" alt="Ernos" style="height:56px" onerror="this.src='/icons/icon.svg'">
+  </header>
+  <div id="msg" style="display:none;padding:10px;border-radius:10px;background:#0b2146;color:#dcf;border:1px solid #2f4f8a"></div>
+  <div id="issueBox" style="display:none;margin-top:10px;padding:12px;border:1px solid #173060;border-radius:10px;background:#0f274f">
+    <div style="margin-bottom:6px;font-weight:700">Report maintenance issue</div>
+    <textarea id="issueText" placeholder="Describe the problem…" style="width:100%;min-height:84px;border-radius:8px;border:1px solid #35405a;background:#2a3040;color:#f0f4fb;padding:8px"></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
+      <button id="btnSendIssue" style="padding:8px 12px;border-radius:10px;border:0;background:#2e8af6;color:#fff;font-weight:700;cursor:pointer">Send</button>
+    </div>
+  </div>
+  <div style="margin-top:12px"><a href="${web}/app.html?api=${encodeURIComponent(api||'')}&nosw=1" id="openApp">Open the App</a></div>
+<script>
+(function(){
+  function show(el){ if(el) el.style.display=''; }
+  function setMsg(t,k){ var el=document.getElementById('msg'); show(el); el.textContent=t;
+    el.style.background=(k==='ok'?'#103622':'#0b2146'); if(k==='error'){el.style.background='#3d1717'}
+    el.style.color=(k==='ok'?'#ffffff':k==='error'?'#ffd6d6':'#b8c5e6');
+    el.style.borderColor=(k==='ok'?'#215f41':k==='error'?'#6e3030':'#2f4f8a'); }
+  window.addEventListener('error', e=>setMsg(e?.message||'Script error','error'));
+  window.addEventListener('unhandledrejection', e=>setMsg((e?.reason?.message||e?.reason||'Promise error'),'error'));
+  var API=${JSON.stringify(api)}||location.origin; var TOKEN=${JSON.stringify(token)};
+  var JWT=''; try{ JWT=localStorage.getItem('ernosToken')||''; }catch(_){}
+  // Back button → return to the app (housekeeping dashboard), not close
+  try{
+    var APP_URL = "/app.html?api="+encodeURIComponent(API||location.origin)+"&nosw=1";
+    history.replaceState({view:"tap-ci"}, "");
+    history.pushState({view:"tap-ci-2"}, "");
+    window.addEventListener("popstate", function(){
+      // Use replace so the Tap page is removed from history
+      location.replace(APP_URL);
+    });
+  }catch(_){}
+
+  if(!JWT){ setMsg('You are not signed in. Tap “Open the App”, sign in, then tap again.','error'); return; }
+  setMsg('Contacting server…','muted');
+  fetch((API||'') + '/tap/ci/perform',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+JWT},body:JSON.stringify({token:TOKEN})})
+  .then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j&&j.error||('HTTP '+r.status)); return j; }))
+  .then(j=>{
+    var role=String(j.role||'').toUpperCase();
+    var text = j.action==='checkin'
+      ? (role==='HOUSEKEEPING'?'Cleaning started in ': role==='NURSING'?'Visit started in ': role==='MAINTENANCE'?'Maintenance started in ':'Checked in at ')
+      : (role==='HOUSEKEEPING'?'Cleaning finished in ': role==='NURSING'?'Visit finished in ': role==='MAINTENANCE'?'Maintenance finished in ':'Checked out from ');
+    var dur = (j.durationMin!=null && j.action==='checkout') ? (' — duration '+j.durationMin+' min') : '';
+    setMsg('✅ '+text+(j.locationName||'this location')+dur,'ok');
+    show(document.getElementById('issueBox'));
+    var btn=document.getElementById('btnSendIssue'); if(btn) btn.onclick=function(){
+      var txt=(document.getElementById('issueText').value||'').trim();
+      if(!txt){ setMsg('No issue text entered.','ok'); return; }
+      fetch((API||'') + '/issues',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+JWT},body:JSON.stringify({token:TOKEN,text:txt})})
+      .then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j&&j.error||('HTTP '+r.status)); return j; }))
+      .then(()=>{ setMsg('Issue sent. Thank you!','ok'); document.getElementById('issueText').value='';})
+      .catch(e=>setMsg(e.message||String(e),'error'));
+    };
+  })
+  .catch(e=> setMsg('Failed: '+(e&&e.message?e.message:e),'error'));
+})();
+</script>
+</body></html>`);
+});
+
+app.get("/tap/nursing/:token", (req, res) => {
+  const token = req.params.token || "";
+  const api = PUBLIC_API_URL || "";
+  res
+    .status(200)
+    .type("html")
+    .send(`<!doctype html>
+<html><meta name="viewport" content="width=device-width, initial-scale=1">
+<body style="font-family:system-ui;max-width:640px;margin:24px auto;padding:0 12px;background:#0c1e3d;color:#f0f4fb">
+  <h3>Nursing Tap</h3>
+  <div id="msg" style="display:none;padding:10px;border-radius:10px;background:#0b2146;color:#dcf;border:1px solid #2f4f8a"></div>
+<script>
+(function(){
+  function show(el){ if(el) el.style.display=''; }
+  function setMsg(t,k){ var el=document.getElementById('msg'); show(el);
+    el.textContent=t; el.style.background=(k==='ok'?'#103622':'#0b2146'); if(k==='error'){el.style.background='#3d1717'}
+    el.style.color=(k==='ok'?'#dcfff3':k==='error'?'#ffd6d6':'#dcf'); el.style.borderColor=(k==='ok'?'#215f41':k==='error'?'#6e3030':'#2f4f8a'); }
+  window.addEventListener('error', e=>setMsg(e?.message||'Script error','error'));
+  window.addEventListener('unhandledrejection', e=>setMsg((e?.reason?.message||e?.reason||'Promise error'),'error'));
+  var API=${JSON.stringify(api)}||location.origin; var TOKEN=${JSON.stringify(token)};
+  var JWT=''; try{ JWT=localStorage.getItem('ernosToken')||''; }catch(_){}
+  // Back button → return to the app
+  try{
+    var APP_URL = "/app.html?api="+encodeURIComponent(API||location.origin)+"&nosw=1";
+    history.replaceState({view:"tap-nursing"}, "");
+    history.pushState({view:"tap-nursing-2"}, "");
+    window.addEventListener("popstate", function(){
+      location.replace(APP_URL);
+    });
+  }catch(_){}
+
+  if(!JWT){ setMsg('You are not signed in. Open the app, sign in as Nursing, then tap again.','error'); return; }
+  setMsg('Logging nursing check…','muted');
+  fetch((API||'') + '/tap/nursing/check',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+JWT},body:JSON.stringify({token:TOKEN})})
+  .then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j&&j.error||('HTTP '+r.status)); return j; }))
+  .then(j=> setMsg('✅ Resident checked at '+(j.locationName||'this location')+'.','ok'))
+  .catch(e=> setMsg('Failed: '+(e&&e.message?e.message:e),'error'));
+})();
+</script>
+</body></html>`);
+});
+
+app.get("/tap/env/:token", (req, res) => {
+  const tok = String(req.params.token || "").trim();
+  res
+    .type("html")
+    .send(`<!doctype html>
+<meta charset="utf-8">
+<title>Ernos • Auditor Tap</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{ --bg:#0c1e3d; --panel:#0f274f; --text:#f0f4fb; --muted:#b8c5e6; --brand:#2e8af6; }
+  body{font:14px system-ui,sans-serif;padding:24px;max-width:540px;margin:0 auto;background:var(--bg);color:var(--text)}
+  #msg{padding:10px;border-radius:10px}
+  .ok{background:#103622;color:#fff;border:1px solid #215f41}
+  .error{background:#3d1717;color:#fff;border:1px solid #6e3030}
+  .muted{color:var(--muted);background:#0b2146;border:1px solid #2f4f8a}
+</style>
+<body>
+  <header><img src="/icons/logo.png" alt="Ernos" style="height:56px" onerror="this.src='/icons/icon.svg'"></header>
+  <div id="msg" class="muted"></div>
+<script>
+(function(){
+  var TOKEN=${JSON.stringify(tok)};
+  var API = ""; try{ API=(localStorage.getItem("ernosApi")||location.origin).replace(/\\/+$/,''); }catch(_){}
+  var JWT = ""; try{ JWT=localStorage.getItem("ernosToken")||""; }catch(_){}
+  // Back button → return to the app
+  try{
+    var APP_URL = "/app.html?api="+encodeURIComponent(API||location.origin)+"&nosw=1";
+    history.replaceState({view:"tap-env"}, "");
+    history.pushState({view:"tap-env-2"}, "");
+    window.addEventListener("popstate", function(){
+      location.replace(APP_URL);
+    });
+  }catch(_){}
+
+  function setMsg(t,k){ var el=document.getElementById('msg'); el.className=(k==='ok'?'ok':k==='error'?'error':'muted'); el.textContent=t; el.style.display=''; }
+  if(!JWT){ setMsg("You are not signed in. Open the Ernos app, sign in (Auditor), then tap again.", "error"); return; }
+  setMsg("Contacting server…","muted");
+  fetch(API + "/me",{headers:{'Authorization':"Bearer "+JWT}})
+   .then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j&&j.error||('HTTP '+r.status)); return j; }))
+   .then(me=>{
+      var role=String(me.role||"").toUpperCase(); var cat=String(me.category||"").toUpperCase();
+      if(!(role==="ADMIN"||cat==="AUDITOR")){ location.replace("/tap/u/"+TOKEN); return; }
+      var audId=parseInt(localStorage.getItem("ernos_current_audit_id")||"0",10);
+      if(!audId){ setMsg("Auditor signed in, but no open audit in this browser. Open the app, click an audit, then tap again.", "ok"); return; }
+      return fetch(API+"/env/tap",{method:"POST",headers:{'Content-Type':"application/json",'Authorization':"Bearer "+JWT}, body: JSON.stringify({token:TOKEN,auditId:audId})})
+        .then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j&&j.error||('HTTP '+r.status)); return j; }))
+        .then(j=> setMsg("Location added to audit: "+(j.locationName||"")+".", "ok"));
+   })
+   .catch(e=> setMsg(e.message||String(e),"error"));
+})();
+</script>
+</body></html>`);
+});
+// --- Reception TAP page (classic UX: welcome/thank-you, no buttons after) ---
+app.get("/tap/reception/:token", (req, res) => {
+  const token = String(req.params.token || "").trim();
+  const api = PUBLIC_API_URL || "";
+
+  res
+    .status(200)
+    .type("html")
+    .send(`<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ernos • Visitor</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{ --bg:#0c1e3d; --panel:#0f274f; --text:#f0f4fb; --muted:#b8c5e6; --brand:#2e8af6; }
+  body{font:15px system-ui,sans-serif;max-width:640px;margin:0 auto;background:var(--bg);color:var(--text);padding:24px}
+  .card{background:var(--panel);border:1px solid #173060;border-radius:16px;padding:16px}
+  .row{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+  label{display:block;font-size:13px;color:#cdd7f0;margin-bottom:6px}
+  input{width:100%;border:1px solid #35405a;background:#2a3040;color:#f0f4fb;padding:10px;border-radius:10px}
+  button{padding:10px 14px;border-radius:10px;border:0;background:#2e8af6;color:#fff;font-weight:700;cursor:pointer}
+  .btn-outline{background:transparent;border:1px solid #2e8af6;color:#cfe3ff}
+  .stack > *{margin-top:10px}
+  #msg{margin:10px 0;padding:12px;border-radius:12px;border:1px solid #2f4f8a;background:#0b2146;color:#b8c5e6;display:none}
+  .ok{border-color:#215f41;background:#103622;color:#eafff4}
+  .err{border-color:#6e3030;background:#3d1717;color:#ffd6d6}
+  .muted{color:#b8c5e6}
+  .tiny{font-size:12px;color:#b8c5e6}
+  .list{display:grid;gap:8px}
+  .pill{display:flex;align-items:center;gap:8px;background:#1a2235;border:1px solid #32405d;padding:8px 10px;border-radius:999px}
+  .pill span{flex:1}
+  canvas.sig{width:100%;height:180px;background:#fff;border-radius:12px;touch-action:none}
+  .center{ text-align:center; }
+</style>
+<body>
+  <header style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <img src="/icons/logo.png" alt="Ernos" style="height:56px" onerror="this.src='/icons/icon.svg'">
+    <h2 style="margin:0">Visitor</h2>
+  </header>
+
+  <div id="msg"></div>
+
+  <!-- Quick welcome-back prompt -->
+  <div class="card stack" id="promptCard" style="display:none">
+    <div id="promptText" class="center" style="font-size:18px"></div>
+    <div class="row" style="justify-content:center">
+      <button id="btnYes">Yes, check me in</button>
+      <button id="btnNo" class="btn-outline">No, someone else</button>
+    </div>
+  </div>
+
+  <!-- Full form -->
+  <div class="card stack" id="formCard" style="display:none">
+    <div>
+      <label for="primaryName">Your name (required)</label>
+      <input id="primaryName" autocomplete="name" placeholder="e.g. Jane Smith">
+    </div>
+
+    <div>
+      <label for="resident">Resident you're visiting</label>
+      <input id="resident" placeholder="e.g. Sr. Teresa">
+    </div>
+
+    <div>
+      <label>Additional visitors</label>
+      <div class="row">
+        <input id="newVisitor" placeholder="Add another visitor name">
+        <button id="btnAdd" type="button" class="btn-outline">Add</button>
+      </div>
+      <div id="visitorsList" class="list"></div>
+    </div>
+
+    <div>
+      <label>Signature (required)</label>
+      <canvas id="sig" class="sig"></canvas>
+      <div class="row" style="justify-content:flex-end">
+        <button id="btnClearSig" type="button" class="btn-outline">Clear signature</button>
+      </div>
+      <div class="tiny">Please sign in the box above with your finger or a stylus.</div>
+    </div>
+
+    <div class="row" style="justify-content:flex-end">
+      <button id="btnCheckin" type="button">Check in</button>
+    </div>
+    <div class="tiny">By checking in you agree to follow the facility's safety rules.</div>
+  </div>
+
+  <!-- Message-only card (after check-in or after auto-checkout) -->
+  <div class="card center" id="messageCard" style="display:none">
+    <div id="bigMessage" style="font-size:18px"></div>
+  </div>
+
+<script>
+(function(){
+  const TOKEN = ${JSON.stringify(token)};
+  let API = ${JSON.stringify(api)}; if(!API) API = location.origin;
+
+  const $ = (id)=>document.getElementById(id);
+  const show = (id)=>{ ['promptCard','formCard','messageCard'].forEach(x=>$(x).style.display='none'); $(id).style.display=''; };
+  const showMsg = (t, cls='')=>{ const el=$('msg'); el.textContent=t; el.className=cls?cls:''; el.style.display=t?'':'none'; };
+
+  // storage keys per token
+  const K_VISIT = 'ernos_visit_id_'+TOKEN;
+  const K_NAME  = 'ernos_last_name_'+TOKEN;
+  const K_RES   = 'ernos_last_resident_'+TOKEN;
+
+  // ----- Add-more visitors list -----
+  const names = [];
+  function renderNames(){
+    const box = $('visitorsList'); box.innerHTML = '';
+    names.forEach((n, i)=>{
+      const row = document.createElement('div');
+      row.className = 'pill';
+      const span = document.createElement('span'); span.textContent = n;
+      const btn = document.createElement('button'); btn.textContent='Remove'; btn.className='btn-outline';
+      btn.onclick = ()=>{ names.splice(i,1); renderNames(); };
+      row.appendChild(span); row.appendChild(btn); box.appendChild(row);
+    });
+  }
+  $('btnAdd')?.addEventListener('click', ()=>{
+    const v = ($('newVisitor').value||'').trim(); if(!v) return;
+    names.push(v); $('newVisitor').value=''; renderNames();
+  });
+
+  // ----- Signature pad (only used on full form path) -----
+  const canvas = $('sig'); const ctx = canvas.getContext('2d');
+  function resizeCanvas(){
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.floor(rect.width * ratio);
+    canvas.height = Math.floor(rect.height * ratio);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(ratio, ratio);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+  resizeCanvas(); window.addEventListener('resize', resizeCanvas);
+
+  let drawing=false, last=null, signed=false;
+  function pos(e){ const r=canvas.getBoundingClientRect(); const t=e.touches&&e.touches[0]; const x=(t?t.clientX:e.clientX)-r.left; const y=(t?t.clientY:e.clientY)-r.top; return {x,y}; }
+  function start(e){ e.preventDefault(); drawing=true; last=pos(e); }
+  function move(e){ if(!drawing) return; const p=pos(e); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#000'; ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; signed=true; }
+  function end(){ drawing=false; }
+  canvas.addEventListener('mousedown',start); canvas.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+  canvas.addEventListener('touchstart',start,{passive:false}); canvas.addEventListener('touchmove',move,{passive:false}); canvas.addEventListener('touchend',end);
+  $('btnClearSig')?.addEventListener('click', ()=>{ ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); signed=false; });
+  function signaturePNG(){
+    const tmp=document.createElement('canvas'); const w=600; const h=Math.round((canvas.height/canvas.width)*w);
+    tmp.width=w; tmp.height=h; const tctx=tmp.getContext('2d');
+    tctx.fillStyle='#fff'; tctx.fillRect(0,0,w,h); tctx.drawImage(canvas,0,0,w,h);
+    return tmp.toDataURL('image/png');
+  }
+
+  // ----- API helpers -----
+  function post(url, data){
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data||{}) })
+      .then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j && j.error || ('HTTP '+r.status)); return j; }));
+  }
+
+  function welcomeMessage(nameOrNames){
+    const txt = Array.isArray(nameOrNames) ? nameOrNames.join(', ') : nameOrNames;
+    return '✅ Welcome ' + (txt || 'visitor') + '. Enjoy your visit!';
+  }
+
+  // ----- Flows -----
+
+  // (A) If there's an open visit on this device, auto-checkout on tap
+  try{
+    const existing = localStorage.getItem(K_VISIT);
+    if(existing){
+      show('messageCard');
+      $('bigMessage').textContent = 'Checking out…';
+      post((API||location.origin) + '/reception/checkout', { id: Number(existing) })
+        .then(j=>{
+          $('bigMessage').textContent = j && j.message ? j.message : 'Thank you for your visit. See you soon!';
+          try{ localStorage.removeItem(K_VISIT); }catch(_){}
+        })
+        .catch(e=>{
+          $('bigMessage').textContent = 'Thank you for your visit!';
+          showMsg(e.message||String(e), 'err');
+          try{ localStorage.removeItem(K_VISIT); }catch(_){}
+        });
+      return; // stop here (this was a tap-out)
+    }
+  }catch(_){}
+
+  // (B) No open visit: if we remember last details, offer quick Yes/No
+  let lastName='', lastResident='';
+  try{
+    lastName = localStorage.getItem(K_NAME) || '';
+    lastResident = localStorage.getItem(K_RES) || '';
+  }catch(_){}
+  if(lastName){
+    $('promptText').textContent = 'Welcome again, ' + lastName + '. Are you here to visit ' + (lastResident || 'the same resident') + ' again?';
+    show('promptCard');
+
+    $('btnYes').onclick = ()=>{
+      show('messageCard'); $('bigMessage').textContent = 'Checking you in…';
+      post((API||location.origin) + '/reception/checkin', {
+        token: TOKEN, primaryName: lastName, names: [], resident: lastResident, signature: null
+      })
+      .then(j=>{
+        $('bigMessage').textContent = welcomeMessage(lastName);
+        try{ localStorage.setItem(K_VISIT, String(j.id)); }catch(_){}
+      })
+      .catch(e=>{ showMsg(e.message||String(e), 'err'); $('bigMessage').textContent=''; show('promptCard'); });
+    };
+
+    $('btnNo').onclick = ()=>{
+      show('formCard');
+    };
+  } else {
+    // (C) First-time: show full form
+    show('formCard');
+  }
+
+  // (D) Full-form check-in
+  $('btnCheckin').onclick = function(){
+    const primaryName = ($('primaryName').value||'').trim();
+    const resident    = ($('resident').value||'').trim();
+    if(!primaryName){ showMsg('Please enter your name.', 'err'); return; }
+    if(!signed){ showMsg('Please provide your signature.', 'err'); return; }
+    showMsg('Contacting server…','muted');
+    const signature = signaturePNG();
+    post((API||location.origin) + '/reception/checkin', {
+      token: TOKEN, primaryName, names, resident, signature
+    })
+    .then(j=>{
+      show('messageCard');
+      $('bigMessage').textContent = welcomeMessage([primaryName].concat(names));
+      try{
+        localStorage.setItem(K_VISIT, String(j.id));
+        localStorage.setItem(K_NAME, primaryName);
+        localStorage.setItem(K_RES, resident);
+      }catch(_){}
+      showMsg('', '');
+    })
+    .catch(e=> showMsg(e.message||String(e), 'err'));
+  };
+})();
+</script>
+</body></html>`);
+});
+
+// Reception page unchanged from your version…
+
+/* ================= Health ================= */
+app.get("/health", (req, res) => res.json({ ok: true }));
+
+/* ================= Startup ================= */
+(async function start() {
+  await runMigrations();
+  await ensureDefaultTenant(); // <-- ensure at least one tenant
+  await seedAdmin(); // <-- admin gets that tenant_id
+  await seedSuperadmin(); // <-- NEW: optional superadmin from env
+  await seedQuestions();
+  app.listen(PORT, () => console.log("Server listening on", PORT));
+})();
+
+// ===============================
+// END server.pg.cjs
+// ===============================

@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#F4F5F7" />
+  <title>Ernos</title>
+  <link rel="icon" href="/skin/icons/favicon.ico">
+  <link rel="icon" type="image/png" href="/skin/icons/logo.png">
+
+  <!-- CRITICAL THEME VARS: set ASAP to avoid old background flash on first paint -->
+  <style id="ernos-theme-vars">
+    :root{
+      --bg:#F4F5F7; --panel:#FFFFFF; --text:#2E2E2E; --muted:#606060; --accent:#7BA297;
+      --border:#E1E3E8; --shadow:0 6px 20px rgba(20,31,50,.06);
+      --ok:#2E7D5B; --warn:#B27B0B; --err:#B24444;
+      --sidebar-gray:#4E6E81; --sidebar-gray-darker:#3E5967; --sidebar-link:#EAF1F4; --sidebar-link-muted:#D7E3E8;
+    }
+    html,body{background:var(--bg); color:var(--text);} /* Prevents dark flash */
+  </style>
+
+  <!-- Skin stylesheet (kept) -->
+  <link rel="stylesheet" href="/skin/styles.css?v=14" />
+
+  <style>
+    /* === Responsive polish (mobile-first) === */
+    html, body { font-size: 16px; line-height: 1.45; }
+
+    /* Images/logos scale nicely */
+    img { max-width: 100%; height: auto; }
+
+    /* Header with standard logo */
+    header.skin-header { padding: 10px 14px; background:#4E6E81; border-bottom:1px solid #3E5967; display:flex; gap:10px; align-items:center; }
+    header.skin-header img { height: 48px; display:block; }
+    @media (min-width:761px){ header.skin-header img{ height:54px } }
+
+    /* Sidebar */
+    .sidebar{ position:fixed; inset:0 auto 0 0; width:270px; background:#fff; border-right:1px solid var(--border); display:flex; flex-direction:column; padding:16px; gap:12px; transform:translateX(-100%); transition:transform .2s ease; z-index:1000; }
+    .sidebar.open{ transform:none; }
+    .sidebar .brand{ display:flex; align-items:center; justify-content:center; padding: 14px 12px; }
+    .sidebar .brand img{ height: 96px; width:auto; }
+    @media (min-width: 900px){ .sidebar{ transform:none } .sidebar .brand img{ height: 120px } }
+
+    .main{ min-height:100dvh; display:flex; flex-direction:column; }
+    @media (min-width: 900px){ .main{ margin-left:270px } }
+
+    .topbar{ position:sticky; top:0; z-index:900; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.86)); border-bottom:1px solid var(--border); }
+    #menuBtn{ display:inline-flex }
+    @media (min-width:900px){ #menuBtn{ display:none } }
+
+    #view{ padding:14px; }
+
+    /* Grid helpers: become responsive by default */
+    .grid{ display:grid; gap:12px }
+    .grid.cols-2{ grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); }
+    .grid.cols-3{ grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); }
+
+    /* Tables: keep horizontal scroll on small screens */
+    .table-wrap{ overflow:auto; -webkit-overflow-scrolling: touch; }
+    .table{ width:100%; border-collapse: collapse; border-spacing:0; font-size:14px; }
+    @media (min-width:900px){ .table{ font-size:16px } }
+
+    /* Cards/buttons text a tad smaller on phones */
+    .card, .kv, .alert, .table, .btn, .topbar { font-size: 16px; }
+    @media (min-width:900px){ .card, .kv, .alert, .table, .btn, .topbar { font-size: 18px } }
+
+    .btn{ display:inline-flex; align-items:center; gap:8px; background:var(--accent); border:0; color:#fff; font-weight:700; border-radius:10px; padding:10px 12px; cursor:pointer; text-decoration:none; }
+    .btn.ghost{ background:transparent; border:1px solid var(--border); color:var(--text) }
+    .btn.small{ padding:6px 10px; font-weight:600 }
+
+    /* No-line tables (kept) */
+    .table, .table *, .kv, .kv *, .alert, .alert *, .empty { border:0 !important; outline:0 !important; box-shadow:none !important; text-decoration:none !important; background-image:none !important; }
+    .table th{ text-transform:uppercase; letter-spacing:.06em; font-weight:800; color:var(--muted); padding:8px 12px }
+    .table td{ padding:10px 12px }
+
+    /* Focus visible */
+    :where(a,button,[tabindex]):focus-visible{ outline:2px solid var(--accent) !important; outline-offset:2px }
+
+    /* Alerts & tags */
+    .alert{ padding:10px 12px; border:1px solid var(--border); background:#fff; color:var(--text); border-radius:10px }
+    .alert.ok{ background:#E9F5EF; border-color:#CFE8DB; color:#1D5C45 }
+    .alert.warn{ background:#FFF5E6; border-color:#F3E0BD; color:#7A5A05 }
+    .alert.err{ background:#FDEEEE; border-color:#F1C9C9; color:#7A2A2A }
+
+    .card{ background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:16px; margin-bottom:16px }
+    .title, h2{ font-size:18px; margin:0 0 6px 0 }
+
+    .empty{ border:1px dashed var(--border); border-radius:14px; padding:16px; text-align:center; color:var(--muted); background:#fff }
+
+    /* Sidebar light palette that matches your logo */
+    .sidebar{ background:var(--sidebar-gray); border-right:1px solid var(--sidebar-gray-darker); color:var(--sidebar-link) }
+    .sidebar .brand{ color: var(--sidebar-link-muted) }
+    .sidebar nav a{ display:block; padding:10px 12px; border-radius:10px; color:var(--sidebar-link); text-decoration:none; border:1px solid transparent }
+    .sidebar nav a.active, .sidebar nav a:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.22) }
+    .sidebar .sidebar-footer{ margin-top:auto }
+    .sidebar .sidebar-footer .btn, .sidebar .sidebar-footer .btn.ghost{ border:1px solid rgba(255,255,255,.35); color:#fff; background:transparent }
+
+    /* Prevent body scroll when sidebar open on mobile */
+    body.nav-open{ overflow:hidden }
+/* === Header stays on top, shows crumbs + role/site, removes sidebar seam === */
+header.skin-header{
+  position: sticky; top: 0; z-index: 1200;     /* keep header visible while scrolling */
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  background:#4E6E81;                          /* your theme */
+  border-bottom: 1px solid #3E5967;            /* set to 0 if you want no bottom line */
+}
+
+/* crumbs text inside the header (current page name) */
+header.skin-header .header-crumbs{
+  margin-left: 8px;
+  flex: 1;                                     /* take remaining space */
+  font-weight: 700; color: #EAF1F4;
+}
+
+/* mobile/desktop toggle for the menu button */
+#menuBtn{ display: inline-flex; }
+@media (min-width:900px){ #menuBtn{ display: none; } }
+
+/* remove the vertical seam line between sidebar and main */
+.sidebar{ border-right: 0 !important; }
+
+/* hide old topbar if it remains in markup */
+.topbar{ display: none !important; }
+/* Make role/site tags in the header cream-white like the header text */
+header.skin-header #userBadge .tag{
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.35);
+  color: #EAF1F4;
+}
+
+/* --- Clean table alignment & Temp °C formatting --- */
+.table th, .table td{ vertical-align: middle; text-align: left; }
+.table th.t-num, .table td.t-num{ text-align: right; font-variant-numeric: tabular-nums; }
+.table th.t-dt,  .table td.t-dt { white-space: nowrap; }
+.table th.t-temp, .table td.t-temp { text-align: left; white-space: nowrap; } /* Temp left + single line */
+.muted{ color: var(--muted); }
+
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <img src="/skin/icons/logo.png" alt="Ernos" onerror="this.src='/skin/icons/icon.svg'">
+      </div>
+      <nav id="nav"></nav>
+      <div class="sidebar-footer">
+        <button id="logoutBtn" class="btn ghost small">Log out</button>
+      </div>
+    </aside>
+
+<main class="main">
+  <header class="skin-header">
+    <button id="menuBtn" class="btn ghost icon" aria-label="Toggle menu">☰</button>
+    <div class="header-crumbs" id="crumbs"></div>
+    <div class="header-right" id="userBadge"></div>
+  </header>
+
+  <section id="view"></section>
+</main>
+
+  </div>
+
+  <!-- Force the SPA’s default API base to your public origin -->
+  <script> window.ERNOS_PUBLIC_API_URL = "https://www.ernosapp.com"; </script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+
+  <script type="module">
+// ===== Utilities
+const $  = (sel, el = document) => el.querySelector(sel);
+const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+
+// Date/time + table helpers (once)
+(() => {
+  if (window.__ERNOS_FMT_DEFINED__) return;
+  window.__ERNOS_FMT_DEFINED__ = true;
+
+  const pad2 = n => String(n).padStart(2, "0");
+  const toD  = v => (v instanceof Date ? v : new Date(v));
+
+  function fmtDT(v){                       // HH:mm dd/MM/yy
+    const d = toD(v); if(!d || Number.isNaN(d.getTime())) return "";
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${String(d.getFullYear()).slice(-2)}`;
+  }
+  function headLabel(c){ return String(c).replace(/_/g," ").toUpperCase() }
+  function escapeHtml(v){ if(v==null) return ""; return String(v).replace(/[&<>'"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[s]) ) }
+  function formatCell(col,val){
+    if(val==null) return "";
+    if (/_at$/.test(col)) return fmtDT(val);
+    if (typeof val==="string" && /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val)) return fmtDT(val);
+    return val;
+  }
+
+  window.fmtDT = fmtDT;
+  window.headLabel = headLabel;
+  window.escapeHtml = escapeHtml;
+  window.formatCell = formatCell;
+})();
+// Add "°C" nicely to fridge temps
+function formatTempC(v){
+  if (v == null || v === '') return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v) + ' °C';
+  const s = (n % 1 === 0) ? n.toFixed(0) : n.toFixed(1); // drop .0, keep one decimal if needed
+  return s + ' °C';
+}
+
+// API + auth state
+const PUBLIC_API_FALLBACK=(window.ERNOS_PUBLIC_API_URL||"").replace(/\/+$/,'');
+const state={ api: localStorage.getItem('ernosApi')||PUBLIC_API_FALLBACK||location.origin, token: localStorage.getItem('ernosToken')||"", me:null };
+
+function setToken(t){ state.token=t||""; try{ localStorage.setItem('ernosToken',state.token) }catch{} }
+function setApi(a){ state.api=(a||"").replace(/\/+$/,'')||location.origin; try{ localStorage.setItem('ernosApi',state.api) }catch{} }
+
+async function api(path, opts={}){
+  const headers=Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  if (state.token) headers.Authorization = 'Bearer '+state.token;
+  const r=await fetch(state.api+path, Object.assign({},opts,{headers}));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error((j&&j.error)||(j&&j.message)||('HTTP '+r.status));
+  return j;
+}
+
+// UI helpers
+function navTo(hash){ location.hash = hash }
+function setCrumbs(t){ const el=$('#crumbs'); if(el) el.textContent = t||'' }
+function showMsg(text, cls=""){ const el=document.createElement('div'); el.className='alert '+(cls||''); el.innerHTML=`<div>${text}</div>`; $('#view').prepend(el); setTimeout(()=>el.remove(), 3500) }
+function renderTable(wrap, items, cols){
+  if(!items || !items.length){
+    wrap.innerHTML = `<div class="empty">No data.</div>`;
+    return;
+  }
+
+  // Alignment class per column
+  const classFor = (c) => {
+    if (/_at$/.test(c)) return 't-dt';                       // *_at columns
+    if (/^(id|minutes_out|days_since)$/i.test(c)) return 't-num';
+    if (c === 'temp_c') return 't-temp';
+    return 't-text';
+  };
+
+  const th = cols.map(c => `<th class="${classFor(c)}">${headLabel(c)}</th>`).join('');
+  const rows = items.map(o =>
+    `<tr>${cols.map(c => {
+      const v = (c === 'temp_c') ? formatTempC(o[c]) : formatCell(c, o[c]);
+      return `<td class="${classFor(c)}">${escapeHtml(String(v ?? ''))}</td>`;
+    }).join('')}</tr>`
+  ).join('');
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table class="table nolines">
+        <thead><tr>${th}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// --- Manual checkout helper: tries 3 endpoint shapes and uses the first that works
+async function checkoutVisitor(id){
+  id = String(id);
+  const nowIso = new Date().toISOString();
+  const attempts = [
+    { path: `/visitors/${id}/checkout`, method: 'POST', body: null },
+    { path: `/visitors/${id}`,          method: 'PATCH', body: { checkout_at: nowIso } },
+    { path: `/visitors/checkout`,       method: 'POST',  body: { id } },
+  ];
+  let lastErr = null;
+  for (const a of attempts){
+    try {
+      await api(a.path, { method: a.method, body: a.body ? JSON.stringify(a.body) : undefined });
+      return;
+    } catch (e) { lastErr = e; }
+  }
+  throw (lastErr || new Error('Checkout failed'));
+}
+
+ // Alignment class per column
+  const classFor = (c) => {
+    if (/_at$/.test(c)) return 't-dt';                                  // taken_at, check_at, created_at, etc.
+    if (/^(id|minutes_out|days_since)$/i.test(c)) return 't-num';        // numeric counts
+    if (c === 'temp_c') return 't-temp';                                  // Temp °C left-aligned, no-wrap
+    return 't-text';
+  };
+
+  const th = cols.map(c => `<th class="${classFor(c)}">${headLabel(c)}</th>`).join('');
+  const rows = items.map(o =>
+    `<tr>${cols.map(c => {
+      let v = (c === 'temp_c') ? formatTempC(o[c]) : formatCell(c, o[c]); // add °C for temps
+      return `<td class="${classFor(c)}">${escapeHtml(String(v ?? ''))}</td>`;
+    }).join('')}</tr>`
+  ).join('');
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table class="table nolines">
+        <thead><tr>${th}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// Auth/me
+async function ensureMe(){ if(!state.token){ state.me=null; return renderUserBadge() } try{ state.me = await api('/me') }catch{ state.me=null } renderUserBadge() }
+function renderUserBadge(){
+  const el=$('#userBadge'); if(!el) return;
+  if(!state.me){ el.innerHTML='<span class="tag">Not signed in</span>'; return }
+  const r=(state.me.role||'').toUpperCase(); const c=(state.me.category||'').toUpperCase();
+  el.innerHTML = `<span class="tag">${state.me.name||state.me.email||'User'}</span><span class="tag">${r}${c&&r!==c?' · '+c:''}</span>${state.me.tenant_name?`<span class="tag">${state.me.tenant_name}</span>`:''}`;
+}
+
+// Nav + sidebar
+function renderNav(){
+  const nav=$('#nav'); if(!nav) return;
+  const r=(state.me?.role||'').toUpperCase(); const c=(state.me?.category||'').toUpperCase();
+  const isAdmin=(r==='ADMIN'||r==='ADMIN_GLOBAL');
+  const items = [
+    ['#dashboard','Dashboard'],
+    ...((c==='NURSING'||isAdmin)?[['#fridge','Fridge Logs']]:[]),
+    ...(isAdmin?[['#fire','Fire Logs']]:[]),
+    ['#visitors','Visitors'],
+    ['#issues','Issues'],
+    ...(isAdmin?[['#locations','Locations']]:[]),
+    ...(isAdmin?[['#qrcodes','QR Codes']]:[]),
+        ['#ffalerts','Alerts (Fridge & Fire)'],
+    ...((isAdmin || c==='AUDITOR') ? [['#env','Environmental Audit']] : []),
+    ['#settings','Settings']
+
+  ];
+  nav.innerHTML = items.map(([href,label])=>`<a href="${href}" data-link>${label}</a>`).join('');
+  $$('a[data-link]',nav).forEach(a=>{
+    a.classList.toggle('active', location.hash===a.getAttribute('href'));
+    a.onclick = e=>{ e.preventDefault(); navTo(a.getAttribute('href')); closeSidebar() };
+  });
+}
+const sidebar = $('#sidebar');
+const menuBtn = $('#menuBtn');
+function openSidebar(){ sidebar?.classList.add('open'); document.body.classList.add('nav-open') }
+function closeSidebar(){ sidebar?.classList.remove('open'); document.body.classList.remove('nav-open') }
+menuBtn?.addEventListener('click', ()=>{ sidebar?.classList.contains('open') ? closeSidebar() : openSidebar() });
+
+// === KPI card helper (clickable)
+function cardKpi(title, value, key){
+  return `
+    <button class="card" data-kpi="${encodeURIComponent(key||'')}" style="text-align:left; cursor:pointer">
+      <div class="title">${escapeHtml(title)}</div>
+      <div style="font-size:2rem;font-weight:800;line-height:1">${escapeHtml(String(value))}</div>
+    </button>`;
+}
+
+// Parse location.hash like "#visitors?onsite=1"
+function getHashQuery(){
+  const raw = String(location.hash||'');
+  const [path, qs] = raw.split('?');
+  const params = {};
+  if (qs){
+    for (const part of qs.split('&')){
+      const [k,v] = part.split('=');
+      if (k) params[decodeURIComponent(k)] = v != null ? decodeURIComponent(v) : '';
+    }
+  }
+  return { path, params };
+}
+
+// Alerts renderer (tables, “Never”/“—” formatting)
+function renderAlerts(wrap, a){
+  wrap.innerHTML = '';
+
+  if (!a) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="title">Alerts</div><div class="empty">No alerts available.</div>`;
+    wrap.appendChild(el);
+    return;
+  }
+
+  const r=(state.me?.role||'').toUpperCase();
+  const c=(state.me?.category||'').toUpperCase();
+  const isAdmin=(r==='ADMIN'||r==='ADMIN_GLOBAL');
+  const showFridge = isAdmin || c==='NURSING';
+  const showFire   = isAdmin;
+
+  const addTable = (title, items, cols, emptyText='No items') => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<div class="title">${title}</div>`;
+
+    if (!items || items.length === 0) {
+      card.innerHTML += `<div class="empty">${emptyText}</div>`;
+    } else {
+      const th = cols.map(c=>`<th>${escapeHtml(headLabel(c))}</th>`).join('');
+      const rows = items.map(o =>
+        `<tr>${cols.map(c=>{
+          let v = o[c];
+          if (c==='last_at' || /_at$/.test(c)) v = v ? fmtDT(v) : 'Never';
+          if (c==='days_since' && (v===null||v===undefined||v===Infinity)) v = '—';
+          if (c==='last_temp_c' && v!=null) v = String(v);
+          return `<td>${escapeHtml(String(v ?? ''))}</td>`;
+        }).join('')}</tr>`
+      ).join('');
+      card.innerHTML += `<div class="table-wrap"><table class="table nolines"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+    wrap.appendChild(card);
+  };
+
+  if (showFridge) {
+    addTable('Fridge Due', a.fridge_due||[], ['location_name','last_at'], 'All fridges up to date');
+    addTable('Fridge Out of Range', a.fridge_out_of_range||[], ['location_name','last_at','last_temp_c'], 'No temperature breaches');
+  }
+
+  if (showFire) {
+    addTable('Fire Due', a.fire_due||[], ['location_name','kind','days_since'], 'All fire checks up to date');
+
+    const drill = a.fire_drill_due || { last_at: null, days_since: null, overdue: true };
+    const drillCard = document.createElement('div');
+    drillCard.className = 'card';
+    drillCard.innerHTML = `
+      <div class="title">Fire Drill</div>
+      <div class="kv" style="margin-top:6px">
+        <div class="muted">Last Drill</div><div>${drill.last_at ? fmtDT(drill.last_at) : 'Never'}</div>
+        <div class="muted">Days Since</div><div>${drill.days_since ?? '—'}</div>
+        <div class="muted">Overdue</div><div><span class="badge">${drill.overdue ? 'Yes' : 'No'}</span></div>
+      </div>`;
+    wrap.appendChild(drillCard);
+  }
+}
+
+/* -------- Views -------- */
+function viewLogin(){
+  setCrumbs('Sign in');
+  $('#view').innerHTML = `
+    <div class="card">
+      <h2>Sign in</h2>
+      <div class="grid cols-2" style="margin-top:10px">
+        <div><label>API base</label><input id="api" class="input" placeholder="${location.origin}" value="${state.api}"/></div>
+        <div><label>Email</label><input id="email" class="input" placeholder="admin@example.com" /></div>
+      </div>
+      <div class="grid cols-2" style="margin-top:10px">
+        <div><label>Password</label><input id="password" type="password" class="input" placeholder="Password123" /></div>
+        <div style="display:flex;align-items:flex-end;justify-content:flex-end"><button id="loginBtn" class="btn">Sign in</button></div>
+      </div>
+    </div>`;
+
+// Replace ONLY the click handler + the function header below
+
+// ✅ Click handler (balanced braces)
+$('#loginBtn').onclick = async () => {
+  try {
+    setApi($('#api').value.trim());
+    const j = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: $('#email').value.trim(),
+        password: $('#password').value
+      })
+    });
+    setToken(j.token);
+
+    await ensureMe();
+    renderNav();
+    showMsg('Signed in.', 'ok');
+
+    // bounce back to TAP if we came from one
+    try {
+      const ret = localStorage.getItem('ernos_return_to');
+      if (ret) {
+        localStorage.removeItem('ernos_return_to');
+        location.href = ret;
+        return;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
+    navTo('#dashboard');
+  } catch (e) {
+    showMsg(e.message || String(e), 'err');
+  }
+}; // <— this semicolon closes the assignment. There should be NOTHING after this except code (no extra }).
+
+// ✅ Start of dashboard function (no stray brace before this)
+async function viewDashboard() {
+  // ... your dashboard code ...
+}
+
+
+async function viewDashboard(){
+  setCrumbs('Dashboard');
+  $('#view').innerHTML = `
+    <div class="grid cols-3" id="kpis" style="margin-bottom:12px"></div>
+    <div id="alertsWrap" class="grid cols-3"></div>
+  `;
+  const kpis = $('#kpis');
+
+  try {
+    const [vj, ij, envJ] = await Promise.all([
+      api('/visitors'),
+      api('/issues'),
+      api('/env/audits')
+    ]);
+    const onSite = (vj.items || []).filter(x => !x.checkout_at).length;
+    const openIssues = (ij.items || []).filter(x => String(x.status || '').toUpperCase() !== 'RESOLVED').length;
+
+    // Fridge/Fire alerts
+    let fridge_due=0, fridge_oor=0, fire_due=0, drill_overdue=false;
+    try {
+      const a = await api('/ff/alerts');
+      fridge_due   = (a.fridge_due || []).length;
+      fridge_oor   = (a.fridge_out_of_range || []).length;
+      fire_due     = (a.fire_due || []).length;
+      drill_overdue = !!(a.fire_drill_due && a.fire_drill_due.overdue);
+      renderAlerts($('#alertsWrap'), a);
+    } catch (e) {
+      renderAlerts($('#alertsWrap'), null);
+    }
+
+    // KPIs
+    const r=(state.me?.role||'').toUpperCase();
+    const isAdmin=(r==='ADMIN'||r==='ADMIN_GLOBAL');
+    kpis.innerHTML = [
+      cardKpi('Visitors On Site', onSite, 'visitors-onsite'),
+      cardKpi('Open Issues', openIssues, 'issues-open'),
+      cardKpi('Fridges Overdue', fridge_due, 'fridge-due'),
+      cardKpi('Fridges Out of Range', fridge_oor, 'fridge-oor'),
+      isAdmin ? cardKpi('Fire Checks Overdue', fire_due, 'fire-due') : '',
+      isAdmin ? cardKpi('Fire Drill Overdue', drill_overdue ? 'Yes' : 'No', 'fire-drill') : ''
+    ].join('');
+
+    // KPI click → navigate
+    $('#kpis').querySelectorAll('[data-kpi]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const key = el.getAttribute('data-kpi');
+        switch (key) {
+          case 'visitors-onsite': navTo('#visitors?onsite=1'); break;
+          case 'issues-open':     navTo('#issues'); break;
+          case 'fridge-due':
+          case 'fridge-oor':
+          case 'fire-due':
+          case 'fire-drill':
+            navTo('#ffalerts?tab=' + encodeURIComponent(key));
+            break;
+        }
+      });
+    });
+
+    // Environmental Audit card on dashboard
+    try {
+      const items = (envJ && envJ.items) || [];
+      const lastSubmittedTs =
+        items
+          .map(x => x.submitted_at ? new Date(x.submitted_at).getTime() : 0)
+          .filter(t => t > 0)
+          .sort((a,b) => b - a)[0] || 0;
+
+      const FREQ_DAYS = 30;
+      const now = Date.now();
+      const msPerDay = 24*60*60*1000;
+      const daysSince = lastSubmittedTs ? Math.floor((now - lastSubmittedTs)/msPerDay) : null;
+      const due = !lastSubmittedTs || (daysSince !== null && daysSince >= FREQ_DAYS);
+
+      const _fmt = (t) => (typeof fmtDT === 'function' ? fmtDT(t) : new Date(t).toLocaleString());
+      const envCard = document.createElement('div');
+      envCard.className = 'card';
+      envCard.innerHTML = `
+        <div class="title">Environmental Audit</div>
+        <div class="kv" style="margin-top:6px">
+          <div class="muted">Frequency</div><div>Every ${FREQ_DAYS} days</div>
+          <div class="muted">Last Submitted</div><div>${lastSubmittedTs ? _fmt(lastSubmittedTs) : 'Never'}</div>
+          <div class="muted">Due</div><div><span class="badge">${due ? 'Yes' : 'No'}</span></div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+          <a class="btn ghost small" href="#env">Open audits</a>
+        </div>`;
+      $('#alertsWrap').appendChild(envCard);
+    } catch (e) { /* ignore */ }
+
+  } catch (e) {
+    $('#view').innerHTML = `<div class="empty">Could not load dashboard: ${escapeHtml(e.message||String(e))}</div>`;
+  }
+
+  // Residents Out (live)
+  (function(){
+    const root=$('#view');
+    const card=document.createElement('div');
+    card.className='card';
+    card.innerHTML = `<div class="title">Residents Out (now)</div><div id="resOutBody"></div>`;
+    root.appendChild(card);
+    async function load(){
+      try{
+        const r=await api('/residents/outside');
+        const items=r.items||[];
+        const body=card.querySelector('#resOutBody');
+        if(!items.length){
+          body.innerHTML = `<div class="empty">No residents currently out.</div>`;
+          return;
+        }
+        body.innerHTML = `<div class="table-wrap"><table class="table nolines">
+          <thead><tr><th>${headLabel('resident')}</th><th>${headLabel('escort')}</th><th>${headLabel('out_at')}</th><th>${headLabel('minutes_out')}</th></tr></thead>
+          <tbody>${items.map(x=>`<tr><td>${escapeHtml(x.resident||'')}</td><td>${escapeHtml(x.escort||'')}</td><td>${fmtDT(x.out_at)}</td><td class="t-num">${escapeHtml(x.minutes_out ?? '')}</td></tr>`).join('')}</tbody>
+        </table></div>`;
+      }catch(_){}
+    }
+    load();
+    try{ const es=(window.__ernosES ||= new EventSource(state.api.replace(/\/+$/,'')+'/events')); es.addEventListener('residents', load) }catch(_){}
+  })();
+}
+
+async function viewFridge(){
+  setCrumbs('Fridge Logs');
+  $('#view').innerHTML = `<div class="card"><h2>Fridge Logs</h2><div id="tableWrap"></div></div>`;
+
+  try{
+    const [logs, locs] = await Promise.all([
+      api('/ff/fridge/logs'),
+      api('/locations').catch(()=>({ items: [] }))
+    ]);
+
+    const locMap = Object.fromEntries((locs.items||[]).map(x => [String(x.id), x.name]));
+    const items = (logs.items||[]).map(x => ({
+      ...x,
+      // Fill name if join is missing/null
+      location_name: x.location_name || x.location || locMap[String(x.location_id)] || `(Location #${x.location_id||''})`
+    }));
+
+    renderTable($('#tableWrap'), items, ['id','location_name','taken_at','temp_c','staff_role']);
+  }catch(e){
+    showMsg(e.message||String(e),'err');
+  }
+}
+
+
+async function viewFire(){
+  setCrumbs('Fire Logs');
+  $('#view').innerHTML = `<div class="card"><h2>Fire Logs</h2><div id="tableWrap"></div></div>`;
+
+  try{
+    const [logs, locs] = await Promise.all([
+      api('/ff/fire/logs'),
+      api('/locations').catch(()=>({ items: [] }))
+    ]);
+
+    const locMap = Object.fromEntries((locs.items||[]).map(x => [String(x.id), x.name]));
+    const items = (logs.items||[]).map(x => ({
+      ...x,
+      location_name: x.location_name || locMap[String(x.location_id)] || ''
+    }));
+
+    renderTable($('#tableWrap'), items, ['id','location_name','check_at','kind','staff_role','note']);
+  }catch(e){
+    showMsg(e.message||String(e),'err');
+  }
+}
+
+async function viewVisitors(){
+  const { params } = getHashQuery();
+  const onsiteOnly = String(params.onsite||'') === '1';
+
+  setCrumbs(onsiteOnly ? 'Visitors (on site)' : 'Visitors');
+
+  $('#view').innerHTML = `
+    <div class="card"><h2>${onsiteOnly ? 'Visitors (on site)' : 'Visitors'}</h2>
+      <div class="row" style="margin-bottom:10px">
+        <button id="refresh" class="btn ghost small">Refresh</button>
+        <a class="btn small" target="_blank" href="${state.api}/visitors?csv=1">Download CSV</a>
+      </div>
+      <div id="tableWrap"></div>
+ </div>`;
+$('#tableWrap').querySelectorAll('[data-checkout]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    const id = btn.getAttribute('data-checkout');
+    if (!id) return;
+    if (!confirm('Check this visitor out now?')) return;
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Checking…';
+    try{
+      await checkoutVisitor(id);
+      showMsg('Visitor checked out.', 'ok');
+      await load();
+    }catch(e){
+      showMsg(e.message || String(e), 'err');
+      btn.disabled = false; btn.textContent = orig;
+    }
+  });
+});
+
+  const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+
+  function canManualCheckout(row){
+    if (row.checkout_at) return false;
+    const t = new Date(row.checkin_at).getTime();
+    if (!Number.isFinite(t)) return false;
+    return (Date.now() - t) >= THREE_HOURS_MS;
+  }
+
+  async function load(){
+    try{
+      const j = await api('/visitors');
+      let items = j.items || [];
+      if (onsiteOnly) items = items.filter(x => !x.checkout_at);
+
+      if (!items.length){
+        $('#tableWrap').innerHTML = `<div class="empty">No visitors.</div>`;
+        return;
+      }
+
+      // Build table manually to include Actions column
+      const rows = items.map(x=>{
+        const eligible = canManualCheckout(x);
+        const actionHtml = eligible
+          ? `<button class="btn small" data-checkout="${escapeHtml(String(x.id))}">Check out</button>`
+          : (x.checkout_at ? '' : `<span class="muted">—</span>`);
+
+        return `<tr>
+          <td class="t-num">${escapeHtml(String(x.id))}</td>
+          <td class="t-text">${escapeHtml(x.primary_name || '')}</td>
+          <td class="t-text">${escapeHtml(x.resident || '')}</td>
+          <td class="t-dt">${escapeHtml(fmtDT(x.checkin_at))}</td>
+          <td class="t-dt">${escapeHtml(x.checkout_at ? fmtDT(x.checkout_at) : '')}</td>
+          <td class="t-text">${actionHtml}</td>
+        </tr>`;
+      }).join('');
+
+      $('#tableWrap').innerHTML = `
+        <div class="table-wrap">
+          <table class="table nolines">
+            <thead>
+              <tr>
+                <th class="t-num">${headLabel('id')}</th>
+                <th class="t-text">${headLabel('primary_name')}</th>
+                <th class="t-text">${headLabel('resident')}</th>
+                <th class="t-dt">${headLabel('checkin_at')}</th>
+                <th class="t-dt">${headLabel('checkout_at')}</th>
+                <th class="t-text">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+
+      // Wire up checkout buttons
+      $('#tableWrap').querySelectorAll('[data-checkout]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const id = btn.getAttribute('data-checkout');
+          if (!id) return;
+          if (!confirm('Check this visitor out now?')) return;
+          const orig = btn.textContent;
+          btn.disabled = true; btn.textContent = 'Checking…';
+          try{
+            await checkoutVisitor(id);
+            showMsg('Visitor checked out.', 'ok');
+            await load();
+          }catch(e){
+            showMsg(e.message || String(e), 'err');
+            btn.disabled = false; btn.textContent = orig;
+          }
+        });
+      });
+
+    }catch(e){
+      $('#tableWrap').innerHTML = `<div class="empty">Failed to load: ${escapeHtml(e.message||String(e))}</div>`;
+    }
+  }
+
+  $('#refresh').onclick = load;
+  load();
+}
+
+
+async function viewIssues(){
+  setCrumbs('Maintenance Issues');
+  $('#view').innerHTML = `<div class="card"><h2>Maintenance Issues</h2>
+    <div class="row" style="margin-bottom:10px"><button id="refresh" class="btn ghost small">Refresh</button></div>
+    <div id="tableWrap"></div></div>`;
+  async function load(){
+    try{
+      const j=await api('/issues');
+      renderTable($('#tableWrap'), j.items||[], ['id','status','location_name','category','text','user_name','created_at','accepted_by_name','maintenance_comment']);
+    }catch(e){ showMsg(e.message||String(e),'err') }
+  }
+  $('#refresh').onclick=load; load();
+}
+
+async function viewLocations(){
+  setCrumbs('Locations');
+  $('#view').innerHTML = `<div class="card"><h2>Locations</h2>
+    <div class="grid cols-3" style="margin-top:10px">
+      <div><label>Name</label><input id="locName" class="input" placeholder="e.g. Reception A"/></div>
+      <div><label>Type</label><select id="locType" class="input"><option>ROOM</option><option>ASSET</option><option>RECEPTION</option><option>FRIDGE</option><option>FIRE</option></select></div>
+      <div style="display:flex;align-items:flex-end"><button id="addLoc" class="btn">Add</button></div>
+    </div>
+    <div id="locMsg" class="muted" style="margin-top:6px"></div>
+    <div id="tableWrap" style="margin-top:10px"></div></div>`;
+
+  $('#addLoc').onclick = async ()=>{
+    try{
+      const name=$('#locName').value.trim();
+      const type=$('#locType').value.toUpperCase();
+      if(!name) return showMsg('Enter a location name','err');
+      await api('/locations',{method:'POST', body:JSON.stringify({ name, type, active:1 })});
+      $('#locName').value=''; showMsg('Location added.','ok'); load();
+    }catch(e){ showMsg(e.message||String(e),'err') }
+  };
+
+  async function load(){
+    try{
+      const j=await api('/locations'); const items=j.items||[];
+      if(!items.length){ $('#tableWrap').innerHTML = `<div class="empty">No locations.</div>`; return }
+      const rows = items.map(x=>`<tr>
+        <td>${escapeHtml(x.name)}</td>
+        <td>${escapeHtml(x.type)}</td>
+        <td>${x.active?'Yes':'No'}</td>
+        <td>
+          <button class="btn ghost small" data-act="toggle" data-id="${x.id}">Toggle</button>
+          <button class="btn ghost small" data-act="delete" data-id="${x.id}">Delete</button>
+        </td></tr>`).join('');
+      $('#tableWrap').innerHTML = `<div class="table-wrap"><table class="table nolines"><thead><tr><th>Name</th><th>Type</th><th>Active</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      $('#tableWrap').querySelectorAll('[data-act="toggle"]').forEach(b=>{
+        b.onclick = async ()=>{
+          const id=b.getAttribute('data-id'); const x=items.find(i=>String(i.id)===String(id)); if(!x) return;
+          try{ await api('/locations/'+id,{method:'PATCH', body:JSON.stringify({ active:x.active?0:1 })}); load() }catch(e){ showMsg(e.message||String(e),'err') }
+        }
+      });
+      $('#tableWrap').querySelectorAll('[data-act="delete"]').forEach(b=>{
+        b.onclick = async ()=>{
+          const id=b.getAttribute('data-id'); if(!confirm('Delete this location and its QR?')) return;
+          try{ await api('/locations/'+id,{method:'DELETE'}); load() }catch(e){ showMsg(e.message||String(e),'err') }
+        }
+      });
+    }catch(e){ showMsg(e.message||String(e),'err') }
+  }
+  load();
+}
+
+async function viewQRCodes(){
+  setCrumbs('QR Codes');
+  $('#view').innerHTML = `<div class="card"><h2>Generate QR / NFC</h2>
+    <div class="grid cols-3">
+      <div><label>Location</label><select id="locSel" class="input"><option value="">Loading…</option></select></div>
+      <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
+        <button id="create" class="btn">Create</button>
+        <button id="copyTap" class="btn ghost">Copy Tap URL</button>
+      </div>
+    </div>
+    <div id="qrOut" style="margin-top:10px"></div></div>`;
+
+  let LOCS=[]; try{
+    const j=await api('/locations'); LOCS=j.items||[];
+    const sel=$('#locSel');
+    sel.innerHTML = `<option value="">(select)</option>`+LOCS.map(x=>`<option value="${x.id}">${escapeHtml(x.name)} (${escapeHtml(x.type||'')})</option>`).join('');
+  }catch(e){ showMsg('Failed to load locations: '+(e.message||e),'err') }
+
+  let lastTapUrl=''; let lastQrDataUrl='';
+
+  $('#create').onclick = async ()=>{
+    try{
+      const id=parseInt($('#locSel').value,10);
+      if(!id) return showMsg('Choose a location','err');
+
+      const j=await api('/qrcodes',{method:'POST', body:JSON.stringify({ locationId:id })});
+      const base=state.api.replace(/\/+$/,'');
+      const urlAuto = `${base}/tap/u/${j.token}`;
+      lastTapUrl = j.urlTapFridge || j.urlTapFire || j.urlTapReception || urlAuto;
+
+      $('#qrOut').innerHTML = `
+        <div class="kv" style="margin-top:8px">
+          <div class="muted">Token</div><div><code>${escapeHtml(j.token)}</code></div>
+          <div class="muted">Auto</div><div><a href="${urlAuto}" target="_blank">${urlAuto}</a></div>
+          <div class="muted">Fridge</div><div><a href="${j.urlTapFridge||''}" target="_blank">${j.urlTapFridge||'-'}</a></div>
+          <div class="muted">Fire</div><div><a href="${j.urlTapFire||''}" target="_blank">${j.urlTapFire||'-'}</a></div>
+          <div class="muted">Reception</div><div><a href="${j.urlTapReception||''}" target="_blank">${j.urlTapReception||'-'}</a></div>
+        </div>
+        <div style="margin-top:12px">
+          <label class="muted">QR / NFC target</label>
+          <select id="qrTarget" class="input">
+            <option value="${urlAuto}">Auto</option>
+            ${j.urlTapFridge?`<option value="${j.urlTapFridge}">Fridge</option>`:''}
+            ${j.urlTapFire?`<option value="${j.urlTapFire}">Fire</option>`:''}
+            ${j.urlTapReception?`<option value="${j.urlTapReception}">Reception</option>`:''}
+          </select>
+        </div>
+        <div id="qrBox" style="margin-top:12px; display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+          <div id="qrCanvas" style="width:240px;height:240px;background:#fff;border-radius:10px"></div>
+          <div style="flex:1; min-width:260px">
+            <div class="muted">Scan with phone camera</div>
+            <div id="qrLink" style="margin-top:6px"></div>
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+              <button id="dlPng" class="btn ghost small">Download PNG</button>
+              <button id="printQR" class="btn ghost small">Print QR</button>
+              <button id="writeNfc" class="btn small">Write NFC tag</button>
+            </div>
+            <div class="muted" style="margin-top:8px">Web NFC works on recent Android Chrome over HTTPS.</div>
+          </div>
+        </div>`;
+
+      const tgtSel=$('#qrTarget'); const qrLink=$('#qrLink'); const qrCanvas=$('#qrCanvas');
+
+      function renderQR(url){
+        qrCanvas.innerHTML='';
+        if(!window.QRCode){ qrLink.innerHTML=`<a href="${url}" target="_blank">${url}</a>`; return }
+        new QRCode(qrCanvas,{ text:url, width:240, height:240, correctLevel:QRCode.CorrectLevel.M });
+        qrLink.innerHTML=`<a href="${url}" target="_blank">${url}</a>`;
+        setTimeout(()=>{
+          const img=qrCanvas.querySelector('img,canvas');
+          if(img && img.tagName==='IMG') lastQrDataUrl=img.src;
+          else if(img && img.tagName==='CANVAS') lastQrDataUrl=img.toDataURL('image/png');
+        }, 100);
+      }
+
+      renderQR($('#qrTarget').value);
+      tgtSel.onchange=()=>{ lastTapUrl=tgtSel.value; renderQR(tgtSel.value) };
+
+      $('#dlPng').onclick = ()=>{ const img=$('#qrCanvas').querySelector('img,canvas'); if(!img) return; let dataUrl=''; if(img.tagName==='CANVAS') dataUrl=img.toDataURL('image/png'); else if(img.tagName==='IMG') dataUrl=img.src; if(dataUrl){ const a=document.createElement('a'); a.href=dataUrl; a.download='ernos-qr.png'; document.body.appendChild(a); a.click(); a.remove() } };
+      $('#printQR').onclick = ()=>{ if(!lastQrDataUrl){ showMsg('Generate a QR first.','err'); return } const targetUrl=$('#qrTarget').value; try{ let iframe=document.getElementById('ernos-print-frame'); if(!iframe){ iframe=document.createElement('iframe'); iframe.id='ernos-print-frame'; Object.assign(iframe.style,{ position:'fixed', right:'0', bottom:'0', width:'0', height:'0', border:'0', visibility:'hidden' }); document.body.appendChild(iframe) } const doc=iframe.contentDocument||iframe.contentWindow.document; doc.open(); doc.write(`<!doctype html><meta charset='utf-8'><title>QR</title><style>@page{size:auto;margin:12mm}body{font-family:system-ui,sans-serif;padding:0;margin:0}.wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}img{width:260px;height:260px;image-rendering:pixelated}.url{margin-top:8px;font-size:12px;color:#000;word-break:break-all;text-align:center}</style><div class='wrap'><img src='${lastQrDataUrl}' alt='QR Code'><div class='url'>${escapeHtml(targetUrl)}</div></div><script>window.onload=()=>{try{window.focus();window.print()}catch(_){}setTimeout(()=>{document.body.innerHTML=''},500)}<\/script>`); doc.close(); setTimeout(()=>{ try{ iframe.remove() }catch(_){} }, 2000) }catch(e){ showMsg('Print failed: '+(e.message||e),'err') } };
+ $('#writeNfc').onclick = async () => {
+  try{
+    // 1) Read selected target
+    let url = $('#qrTarget').value;
+
+    // 2) Normalize to absolute URL (defensive)
+    const u = new URL(url, state.api.replace(/\/+$/,'') + '/');
+    url = u.href;
+
+    // 3) Require Web NFC
+    if (!('NDEFReader' in window)) {
+      showMsg('Web NFC not supported on this device/browser.', 'warn');
+      return;
+    }
+
+    // 4) Write a URL record (so phones open it on tap)
+    const ndef = new NDEFReader();
+    await ndef.write({ records: [{ recordType: 'url', data: url }] });
+
+    // 5) Helpful messages
+    showMsg(`NFC tag written: ${url}`, 'ok');
+    if (!/^https:\/\//i.test(url)) {
+      showMsg('Tip: use HTTPS so all phones open it automatically.', 'warn');
+    }
+  }catch(e){
+    showMsg(`NFC write failed: ${e?.message || String(e)}`, 'err');
+  }
+};
+
+async function viewEnvAudit(){
+  setCrumbs('Environmental Audit');
+
+  const r=(state.me?.role||'').toUpperCase();
+  const c=(state.me?.category||'').toUpperCase();
+  const canCreate = (r==='ADMIN' || r==='ADMIN_GLOBAL' || c==='AUDITOR');
+
+  $('#view').innerHTML = `
+    <div class="card">
+      <h2>Environmental Audit</h2>
+      <div class="row" style="margin-bottom:10px; gap:10px">
+        ${canCreate ? `<button id="btnNewAudit" class="btn">Start New Audit</button>` : ''}
+        <button id="btnRefresh" class="btn ghost small">Refresh</button>
+      </div>
+      <div class="muted">Pick an audit to run. The “Runner” opens a mobile-friendly page; tap location tags (Auditor TAP) to add locations to the <em>active</em> audit.</div>
+      <div id="envTable" style="margin-top:10px"></div>
+    </div>`;
+
+  function activeId(){
+    try { return parseInt(localStorage.getItem('ernos_current_audit_id')||'0',10) } catch(_){ return 0 }
+  }
+  function setActive(id){
+    try { localStorage.setItem('ernos_current_audit_id', String(id)); } catch(_){}
+    showMsg('Active audit set to #' + id, 'ok');
+    load();
+  }
+  async function downloadCsv(id){
+    try{
+      const url = state.api.replace(/\/+$/,'') + '/env/audits/' + encodeURIComponent(id) + '/csv';
+      const r = await fetch(url, { headers: { 'Authorization':'Bearer '+state.token } });
+      if(!r.ok){ const j = await r.text(); throw new Error(j || ('HTTP '+r.status)); }
+      const b = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = 'audit_' + id + '.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 600);
+    }catch(e){ showMsg(e.message||String(e), 'err'); }
+  }
+
+  async function load(){
+    try{
+      const j = await api('/env/audits');
+      const items = j.items || [];
+      if(!items.length){
+        $('#envTable').innerHTML = `<div class="empty">No audits yet.</div>`;
+        return;
+      }
+      const aid = activeId();
+      const rows = items.map(a=>{
+        const isActive = (aid && Number(a.id)===Number(aid));
+        const badge = isActive ? `<span class="tag">Active</span>` : '';
+        const started = a.started_at ? fmtDT(a.started_at) : '';
+        const submitted = a.submitted_at ? fmtDT(a.submitted_at) : '';
+        const score = (a.overall_score!=null ? (a.overall_score+'%') : '—');
+        return `<tr>
+          <td>#${a.id} ${badge}</td>
+          <td>${escapeHtml(a.name||('Audit '+a.id))}</td>
+          <td>${escapeHtml(String(a.status||'').toUpperCase())}</td>
+          <td>${escapeHtml(started)}</td>
+          <td>${escapeHtml(submitted)}</td>
+          <td>${escapeHtml(a.auditor_name||'')}</td>
+          <td>${escapeHtml(score)}</td>
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <a class="btn ghost small" target="_blank" href="/audit/${a.id}">Runner</a>
+              <button class="btn ghost small" data-act="active" data-id="${a.id}">Set active</button>
+              <button class="btn ghost small" data-act="csv" data-id="${a.id}">CSV</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+      $('#envTable').innerHTML = `
+        <div class="table-wrap"><table class="table nolines">
+          <thead><tr>
+            <th>ID</th><th>Name</th><th>Status</th><th>Started</th><th>Submitted</th><th>Auditor</th><th>Score</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`;
+
+      // wire actions
+      $('#envTable').querySelectorAll('[data-act="active"]').forEach(b=>{
+        b.onclick = ()=> setActive(b.getAttribute('data-id'));
+      });
+      $('#envTable').querySelectorAll('[data-act="csv"]').forEach(b=>{
+        b.onclick = ()=> downloadCsv(b.getAttribute('data-id'));
+      });
+
+    }catch(e){
+      $('#envTable').innerHTML = `<div class="empty">Failed to load audits: ${escapeHtml(e.message||String(e))}</div>`;
+    }
+  }
+
+  $('#btnRefresh')?.addEventListener('click', load);
+  $('#btnNewAudit')?.addEventListener('click', async ()=>{
+    try{
+      const name = prompt('Audit name (optional):','');
+      const j = await api('/env/audits',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: name || undefined })});
+      try{ localStorage.setItem('ernos_current_audit_id', String(j.id)); }catch(_){}
+      showMsg('Audit created (#'+j.id+'). Open Runner to start answering.', 'ok');
+      load();
+    }catch(e){ showMsg(e.message||String(e), 'err'); }
+  });
+
+  load();
+}
+
+async function viewSettings(){
+  setCrumbs('Settings');
+  $('#view').innerHTML = `<div class="card"><h2>API & Token</h2>
+    <div class="grid cols-3">
+      <div><label>API base</label><input id="api" class="input" value="${state.api}" /></div>
+      <div><label>Token</label><input id="tok" class="input" value="${state.token}" /></div>
+      <div style="display:flex;align-items:flex-end;justify-content:flex-end"><button id="save" class="btn">Save</button></div>
+    </div></div>`;
+  $('#save').onclick = ()=>{ setApi($('#api').value.trim()); setToken($('#tok').value.trim()); showMsg('Saved.','ok') }
+}
+
+async function viewFFAlerts(){
+  setCrumbs('Fridge & Fire Alerts');
+
+  $('#view').innerHTML = `
+    <div class="card"><h2>Fridge & Fire Alerts</h2>
+      <div id="alertsWrap" class="grid cols-3" style="margin-top:12px"></div>
+    </div>`;
+
+  try{
+    const a = await api('/ff/alerts');
+    renderAlerts($('#alertsWrap'), a);
+
+    // Optional scroll-to section via ?tab=
+    const { params } = getHashQuery();
+    const tab = String(params.tab||'');
+    const map = {
+      'fridge-due': 'Fridge Due',
+      'fridge-oor': 'Fridge Out of Range',
+      'fire-due':   'Fire Due',
+      'fire-drill': 'Fire Drill'
+    };
+    const title = map[tab];
+    if (title){
+      const cards = Array.from($('#alertsWrap').querySelectorAll('.card .title'));
+      const target = cards.find(h => h.textContent.trim() === title);
+      if (target) target.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+  }catch(e){
+    $('#alertsWrap').innerHTML = `<div class="empty">Failed to load alerts: ${escapeHtml(e.message||String(e))}</div>`;
+  }
+}
+
+// Router
+async function route(){
+  const raw = location.hash || '#login';
+  const [hashOnly] = raw.split('?');
+  if (!state.token && hashOnly !== '#login') return navTo('#login');
+  await ensureMe();
+  renderNav();
+
+  switch(hashOnly){
+    case '#login':    return viewLogin();
+    case '#dashboard':return viewDashboard();
+    case '#locations':return viewLocations();
+    case '#qrcodes':  return viewQRCodes();
+    case '#visitors': return viewVisitors();
+    case '#issues':   return viewIssues();
+    case '#ffalerts': return viewFFAlerts();
+    case '#env':       return viewEnvAudit();
+    case '#fire':     return viewFire();
+    case '#fridge':   return viewFridge();    
+    case '#settings': return viewSettings();
+    default:          return navTo('#dashboard');
+  }
+}
+
+// Boot
+window.addEventListener('hashchange', ()=>{ route(); closeSidebar() });
+window.addEventListener('DOMContentLoaded', ()=>{
+  try{
+// if TAP sent us here and we already have a token, go right back
+try{
+  const ret = localStorage.getItem('ernos_return_to');
+  if (ret && localStorage.getItem('ernosToken')) {
+    localStorage.removeItem('ernos_return_to');
+    location.href = ret;
+    return;
+  }
+}catch(_){}
+
+    $('#logoutBtn')?.addEventListener('click', ()=>{ setToken(''); state.me=null; renderUserBadge(); renderNav(); navTo('#login') });
+    if(!location.hash) navTo('#login');
+    route();
+  }catch(e){
+    console.error('Boot error:', e);
+    const v=$('#view');
+    if(v) v.innerHTML = `<div class="alert err">Boot error: ${escapeHtml((e && e.message)||String(e))}</div>`;
+  }
+});
+</script>
+
+  <!--
+    ===== If you control the /tap/* pages too, paste this tiny snippet in their <head>
+    to avoid any "old background" flash and keep colors in sync on first paint:
+
+    <style>
+      :root{ --bg:#F4F5F7; --text:#2E2E2E; }
+      html,body{ background:var(--bg); color:var(--text) }
+      meta[name="theme-color"]{ content:#F4F5F7 }
+    </style>
+
+    Or include /skin/styles.css?v=14 and the #ernos-theme-vars block above.
+  -->
+</body>
+</html>

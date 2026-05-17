@@ -1,0 +1,19 @@
+﻿# --- DATABASE (local postgres) ---
+DATABASE_URL=postgres://ernos:ernos@localhost:5432/ernos
+PGSSL=0
+
+# --- BACKEND SERVER ---
+PORT=5055
+FRONTEND_DIR=frontend
+SKIN_DIR=frontend/frontend-skin
+JWT_SECRET=change-me-dev-only
+
+# --- URLS FOR LOCAL DEV ---
+# The app will be served from here AND call the API here.
+PUBLIC_WEB_URL=http://localhost:5055
+PUBLIC_API_URL=http://localhost:5055
+
+# --- PUSH NOTIFICATIONS (OK TO REUSE KEYS IN DEV) ---
+VAPID_PUBLIC_KEY=BIzZi1OK5Mm2cSEZ4FrF3CV5IXa7OQMoPtyuxTEsNZXYf2GoBZDcKrwoIst_Kw8coPsm9DvnkbMsnFVZvgSBcpA
+VAPID_PRIVATE_KEY=uCZcECRAHJl6_o6NBPR8Z7wJsIr7nPTo-xMPPRj7zTg
+VAPID_SUBJECT=http://localhost:5055

@@ -1,0 +1,43 @@
+# === SETTINGS (edit ONLY $DUMP) ===
+$PG      = "C:\Program Files\PostgreSQL\17\bin"
+$DB      = "ernos"
+$APPUSER = "ernos"
+$APPPASS = "ernos"
+$DUMP    = "E:\ErnosBackups\ernos_YYYYMMDD_HHMM.dump"  # <-- change to your dump file path
+# ==================================
+
+# 1) Create/ensure the 'ernos' role (with login + password)
+& "$PG\psql.exe" -U postgres -h 127.0.0.1 -d postgres -v u="$APPUSER" -v p="$APPPASS" -c @"
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'u') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'u', :'p');
+  ELSE
+    EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', :'u', :'p');
+  END IF;
+END
+\$\$;
+"@
+
+# 2) Create DB if missing (owned by ernos)
+& "$PG\psql.exe" -U postgres -h 127.0.0.1 -d postgres -v d="$DB" -v u="$APPUSER" -c @"
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'d') THEN
+    EXECUTE format('CREATE DATABASE %I OWNER %I', :'d', :'u');
+  END IF;
+END
+\$\$;
+"@
+
+# 3) Restore contents (ignore owner/privileges from source; set role to ernos)
+& "$PG\pg_restore.exe" -U postgres -h 127.0.0.1 -d $DB --no-owner --no-privileges --role=$APPUSER "$DUMP"
+
+# 4) Ensure ownership/permissions are correct
+& "$PG\psql.exe" -U postgres -h 127.0.0.1 -d $DB -v d="$DB" -v u="$APPUSER" -c "ALTER DATABASE :\"d\" OWNER TO :\"u\";"
+& "$PG\psql.exe" -U postgres -h 127.0.0.1 -d $DB -v u="$APPUSER" -c "ALTER SCHEMA public OWNER TO :\"u\";"
+& "$PG\psql.exe" -U postgres -h 127.0.0.1 -d $DB -v u="$APPUSER" -c "GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA public TO :\"u\";"
+& "$PG\psql.exe" -U postgres -h 127.0.0.1 -d $DB -v u="$APPUSER" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO :\"u\";"
+
+Write-Host "`nRestore complete. Use this in .env:"
+Write-Host "DATABASE_URL=postgres://$APPUSER:$APPPASS@localhost:5432/$DB"

@@ -1,0 +1,394 @@
+/* Ernos Frontend Skin — Light theme with logo-matched sidebar */
+*{box-sizing:border-box}
+html,body,#app{height:100%}
+html, body { font-size:16px; line-height:1.45; }
+body{
+margin:0; background:var(--bg); color:var(--text);
+font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+}
+
+
+/* Header */
+header.skin-header{ padding:10px 14px; background:#4E6E81; border-bottom:1px solid #3E5967; display:flex; gap:10px; align-items:center; }
+header.skin-header img{ height:48px; display:block; }
+@media (min-width:761px){ header.skin-header img{ height:54px } }
+
+
+/* Sidebar */
+.sidebar{ position:fixed; inset:0 auto 0 0; width:270px; background:var(--sidebar-gray); border-right:1px solid var(--sidebar-gray-darker); color:var(--sidebar-link); display:flex; flex-direction:column; padding:16px; gap:12px; transform:translateX(-100%); transition:transform .2s ease; z-index:1000; }
+.sidebar.open{ transform:none }
+.sidebar .brand{ display:flex; align-items:center; justify-content:center; padding: 14px 12px; color:var(--sidebar-link-muted) }
+.sidebar .brand img{ height:96px; width:auto }
+@media (min-width:900px){ .sidebar{ transform:none } .sidebar .brand img{ height:120px } }
+.sidebar nav a{ display:block; padding:10px 12px; border-radius:10px; color:var(--sidebar-link); text-decoration:none; border:1px solid transparent }
+.sidebar nav a.active, .sidebar nav a:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.22) }
+.sidebar .sidebar-footer{ margin-top:auto }
+.sidebar .sidebar-footer .btn, .sidebar .sidebar-footer .btn.ghost{ border:1px solid rgba(255,255,255,.35); color:#fff; background:transparent }
+
+
+/* Main */
+.main{ min-height:100dvh; display:flex; flex-direction:column; }
+@media (min-width: 900px){ .main{ margin-left:270px } }
+
+
+.topbar{ position:sticky; top:0; z-index:900; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.86)); border-bottom:1px solid var(--border); }
+/* === Ernos topbar text must be WHITE (matches blue header) === */
+.topbar,
+.topbar * {
+  color: #EAF1F4 !important; /* white */
+}
+
+
+
+#menuBtn{ display:inline-flex; color:#2E2E2E; }
+/* Ghost buttons inside topbar should be dark text by default */
+.topbar .btn.ghost,
+.topbar .btn.ghost * {
+  color: #2E2E2E !important;
+  border-color: var(--border);
+}
+
+@media (min-width:900px){ #menuBtn{ display:none } }
+
+
+#view{ padding:14px; }
+
+
+/* Grid helpers */
+.grid{ display:grid; gap:12px }
+.grid.cols-2{ grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); }
+.grid.cols-3{ grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); }
+
+
+/* Buttons, inputs */
+.btn{ display:inline-flex; align-items:center; gap:8px; background:var(--accent); border:0; color:#fff; font-weight:700; border-radius:10px; padding:10px 12px; cursor:pointer; text-decoration:none; }
+.btn.ghost{ background:transparent; border:1px solid var(--border); color:var(--text) }
+.btn.small{ padding:6px 10px; font-weight:600 }
+.btn.ok{ background:var(--ok) } .btn.warn{ background:var(--warn) } .btn.err{ background:var(--err) }
+.input, select, textarea{ width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:#fff; color:var(--text); }
+
+
+/* Cards, alerts */
+.card{ background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:16px; margin-bottom:16px }
+.title, h2{ font-size:18px; margin:0 0 6px 0 }
+.alert{ padding:10px 12px; border:1px solid var(--border); background:#fff; color:var(--text); border-radius:10px }
+.alert.ok{ background:#E9F5EF; border-color:#CFE8DB; color:#1D5C45 }
+.alert.warn{ background:#FFF5E6; border-color:#F3E0BD; color:#7A5A05 }
+.alert.err{ background:#FDEEEE; border-color:#F1C9C9; color:#7A2A2A }
+
+
+/* Tables — no lines */
+.table-wrap{ overflow:auto; -webkit-overflow-scrolling:touch }
+.table{ width:100%; border-collapse:collapse; border-spacing:0; font-size:14px }
+@media (min-width:900px){ .table{ font-size:16px } }
+.table, .table *, .kv, .kv *, .alert, .alert *, .empty{ border:0 !important; outline:0 !important; box-shadow:none !important; text-decoration:none !important; background-image:none !important }
+.table th{ text-transform:uppercase; letter-spacing:.06em; font-weight:800; color:var(--muted); padding:8px 12px }
+.table td{ padding:10px 12px }
+
+
+/* Other bits */
+.kv{ display:grid; grid-template-columns:180px 1fr; gap:6px 12px }
+.badge{ display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; background:rgba(0,0,0,.06); color:var(--text) }
+.tag{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; font-size:12px; color:var(--muted) }
+
+
+/* Images/logos scale nicely */
+img{ max-width:100%; height:auto }
+
+
+/* Focus visible */
+:where(a,button,[tabindex]):focus-visible{ outline:2px solid var(--accent) !important; outline-offset:2px }
+
+
+/* Prevent body scroll when sidebar open on mobile */
+body.nav-open{ overflow:hidden }
+
+/* FINAL override — 2× logos */
+header.skin-header > img { height: 96px !important; }   /* was 48px */
+@media (min-width:761px){
+  header.skin-header > img { height: 108px !important; } /* was 54px */
+}
+
+.sidebar .brand > img { height: 192px !important; }      /* was 96px */
+@media (min-width:900px){
+  .sidebar .brand > img { height: 240px !important; }    /* was 120px */
+}
+
+/* ===== Mobile header + centered logo ===== */
+@media (max-width: 768px) {
+  /* pick your header selector: the first match wins */
+  .app-header, header#topbar, header.site-header, header {
+    position: fixed;
+    top: env(safe-area-inset-top, 0);
+    left: 0;
+    right: 0;
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;      /* center children (logo) */
+
+    height: 60px;                 /* adjust if your header is taller */
+    padding: 6px 12px;
+    background: var(--bg, #0c1e3d);
+    border-bottom: 1px solid var(--border, #173060);
+  }
+
+  /* keep left/right header controls clickable without shifting the center */
+  .app-header .left, header .left { position: absolute; left: 8px; inset-block: 0; display:flex; align-items:center; }
+  .app-header .right, header .right { position: absolute; right: 8px; inset-block: 0; display:flex; align-items:center; }
+
+  /* logo sizing: fully visible, no overflow */
+  .app-header .logo, header img.logo, header > img {
+    max-height: 44px;             /* slightly smaller than header height */
+    max-width: 60vw;              /* prevent overflow on tiny screens */
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* push main content below fixed header */
+  main, #app-main, .app-main, .page, body {
+    --header-h: 60px;             /* keep in sync with header height */
+    padding-top: var(--header-h);
+  }
+}
+/* ===== Mobile sidebar scrollable ===== */
+@media (max-width: 768px) {
+  .sidebar, nav.sidebar, #sidebar, [data-role="sidebar"] {
+    position: relative;                 /* or your existing positioning */
+    max-height: calc(100dvh - var(--header-h, 60px));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;  /* smooth iOS scroll */
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+/* ===== MOBILE HEADER + SIDEBAR (FORCE) ===== */
+@media (max-width: 768px) {
+  /* Fixed, centered header with visible logo */
+  header, .app-header, header#topbar, header.site-header {
+    position: fixed !important;
+    top: env(safe-area-inset-top, 0) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 9999 !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    height: 64px !important;         /* adjust if you want smaller */
+    padding: 8px 12px !important;
+    background: var(--bg, #0c1e3d) !important;
+    border-bottom: 1px solid var(--border, #173060) !important;
+  }
+
+  /* Side controls still clickable without shifting center */
+  header .left, .app-header .left { position: absolute !important; left: 8px !important; inset-block: 0 !important; display:flex !important; align-items:center !important; }
+  header .right, .app-header .right { position: absolute !important; right: 8px !important; inset-block: 0 !important; display:flex !important; align-items:center !important; }
+
+  /* Logo sizing = fully visible, centered */
+  header img, header .logo, .app-header .logo, header > img {
+    max-height: 48px !important;     /* a bit smaller than header */
+    max-width: 70vw !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+    margin: 0 auto !important;
+  }
+
+  /* Push content below fixed header (uses --header-h from JS) */
+  body, main, #app-main, .app-main, .page, #root, #container {
+    padding-top: var(--header-h, 64px) !important;
+  }
+
+  /* Sidebar scrollability (catch most common containers) */
+  .sidebar, #sidebar, nav.sidebar, [data-role="sidebar"],
+  aside[role="complementary"], .drawer, .drawer-content, .side, .menu {
+    max-height: calc(100dvh - var(--header-h, 64px)) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding-bottom: env(safe-area-inset-bottom, 0) !important;
+  }
+}
+/* ===== Mobile: fixed header (thin), logo shown in sidebar top ===== */
+@media (max-width: 768px) {
+  /* Fixed, slim header bar (no logo here on mobile) */
+  header, .app-header, header#topbar, header.site-header, #topbar {
+    position: fixed !important;
+    top: env(safe-area-inset-top, 0) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 10000 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 56px !important;
+    padding: 6px 12px !important;
+    background: var(--bg, #0c1e3d) !important;
+    border-bottom: 1px solid var(--border, #173060) !important;
+  }
+
+  /* keep left/right header controls clickable without shifting center */
+  header .left, .app-header .left, #topbar .left {
+    position: absolute !important; left: 8px !important; inset-block: 0 !important;
+    display: flex !important; align-items: center !important;
+  }
+  header .right, .app-header .right, #topbar .right {
+    position: absolute !important; right: 8px !important; inset-block: 0 !important;
+    display: flex !important; align-items: center !important;
+  }
+
+  /* Hide header logo on phones — we'll show it in the sidebar instead */
+  header .logo, header img[src*="logo"] { display: none !important; }
+
+  /* push page content below the fixed header */
+  body, main, #app-main, .app-main, .page, #root, #container {
+    padding-top: var(--header-h, 56px) !important;
+  }
+
+  /* Sidebar: scrollable with momentum; reserves space below header */
+  .sidebar, #sidebar, nav.sidebar, [data-role="sidebar"],
+  aside[role="complementary"], .drawer, .drawer-content, .side, .menu {
+    max-height: calc(100dvh - var(--header-h, 56px)) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding-bottom: env(safe-area-inset-bottom, 0) !important;
+  }
+
+  /* A nice sticky “brand” row at the top of the sidebar (logo goes here) */
+  .sidebar-brand {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--panel, #ffffff);
+    border-bottom: 1px solid var(--border, #173060);
+    padding: 12px;
+  }
+  .sidebar-brand img {
+    display: block; margin: 0 auto;
+    height: 42px; width: auto; max-width: 80%;
+    object-fit: contain;
+  }
+}
+/* ===== ERNOS FIX PACK v1.1 — Header text WHITE + mobile username visible ===== */
+
+/* 1) Force white text in header + topbar title (desktop + mobile) */
+header.skin-header,
+header.skin-header * ,
+.topbar,
+.topbar * {
+  color: #EAF1F4 !important;            /* white */
+}
+
+/* 2) Ensure backgrounds match your header palette so white text stays readable */
+header.skin-header {
+  background: #4E6E81 !important;
+  border-bottom: 1px solid #3E5967 !important;
+}
+
+/* If your topbar sits under the header and shows the current section title */
+.topbar {
+  background: #4E6E81 !important;
+  border-bottom: 1px solid #3E5967 !important;
+}
+
+/* 3) Keep left/right controls and the logged-in name visible on mobile */
+header.skin-header .left,
+header.skin-header .right {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+header.skin-header .right .user,
+header.skin-header .right [data-user],
+header.skin-header .right .username {
+  color: inherit !important;
+  white-space: nowrap !important;
+  max-width: 44vw !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* 4) Ghost buttons/links inside header remain readable on dark bg */
+header.skin-header .btn.ghost,
+header.skin-header a,
+header.skin-header button {
+  color: #EAF1F4 !important;
+  border-color: rgba(234,241,244,.45) !important;
+}
+
+/* 5) Icons in header take the white color too */
+header.skin-header svg {
+  color: inherit !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+/* ===== ERNOS FIX PACK — pin user chip right, keep title centered ===== */
+
+/* Desktop: right-align user chip; title can be left or centered as you wish */
+.topbar .user,
+.topbar #user,
+.topbar [data-user],
+header.skin-header .user,
+header.skin-header #user,
+header.skin-header [data-user] {
+  margin-left: auto !important;
+  color: #EAF1F4 !important;
+  white-space: nowrap !important;
+  max-width: 40vw !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Make sure the bar actually uses the solid header background (not the gradient) */
+.topbar {
+  background: #4E6E81 !important;
+  border-bottom: 1px solid #3E5967 !important;
+}
+
+/* Keep the current section title readable (white) */
+#crumbs,
+.topbar .title,
+.topbar h1 {
+  color: #EAF1F4 !important;
+}
+
+/* Mobile: center the title, pin user chip to the right */
+@media (max-width: 900px) {
+  .topbar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important;
+  }
+
+  .topbar .title,
+  #crumbs {
+    margin: 0 auto !important;
+    text-align: center !important;
+    width: 100% !important;
+    pointer-events: none; /* don’t block clicks on left/right buttons */
+  }
+
+  .topbar .user,
+  .topbar #user,
+  .topbar [data-user] {
+    position: absolute !important;
+    right: 10px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    text-align: right !important;
+    max-width: 44vw !important;
+  }
+
+  /* Left controls (menu/back) stay clickable */
+  .topbar .left, header .left {
+    position: absolute !important;
+    left: 10px !important;
+    inset-block: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+}

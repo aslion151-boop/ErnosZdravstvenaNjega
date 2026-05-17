@@ -1,0 +1,4 @@
+str new 
+
+cd C:\ErnosApp
+node backend\server.v2.cjs

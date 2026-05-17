@@ -1,0 +1,15 @@
+﻿DATABASE_URL=postgres://ernos:ernos@localhost:5432/ernos
+PGSSL=0
+PORT=5055
+FRONTEND_DIR=frontend
+SKIN_DIR=frontend/frontend-skin
+JWT_SECRET=change-me
+PUBLIC_WEB_URL=http://www.ernosapp.com
+PUBLIC_API_URL=
+VAPID_PUBLIC_KEY=BIzZi1OK5Mm2cSEZ4FrF3CV5IXa7OQMoPtyuxTEsNZXYf2GoBZDcKrwoIst_Kw8coPsm9DvnkbMsnFVZvgSBcpA
+VAPID_PRIVATE_KEY=uCZcECRAHJl6_o6NBPR8Z7wJsIr7nPTo-xMPPRj7zTg
+VAPID_SUBJECT=https://www.ernosapp.com/
+
+
+
+

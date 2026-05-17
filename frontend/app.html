@@ -1,0 +1,1817 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ernos – App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0ea5e9">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/logo.png">
+  <style>
+    :root{--bg:#0c1e3d;--panel:#0f274f;--text:#f0f4fb;--muted:#b8c5e6;--brand:#2e8af6;--input:#2a3040;--input-b:#35405a;--table-b:#3c4e7a}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;font-size:18px;line-height:1.45}
+    header{padding:14px 18px;background:#0b1a36;border-bottom:1px solid #102550;display:flex;gap:12px;align-items:center}
+    .brand{display:flex;gap:10px;align-items:center;font-weight:800;font-size:30px}
+    .brand img{height:114px;display:block}
+    @media (max-width:760px){ .brand img{ height:72px } }
+    .muted{color:var(--muted);font-size:14px}
+    .container{max-width:1200px;margin:0 auto;padding:18px}
+    .card{background:var(--panel);border:1px solid #173060;border-radius:14px;padding:16px;margin:12px 0}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .col{flex:1;min-width:220px}
+    input,select,button{padding:10px 12px;border-radius:10px;border:1px solid var(--input-b);background:var(--input);color:var(--text);font-size:16px}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{padding:10px 12px;border-bottom:1px solid var(--table-b);text-align:left;vertical-align:top}
+    th{font-weight:700}
+    button{background:var(--brand);border:0;font-weight:700;cursor:pointer}
+    button.secondary{background:#2b3b66}
+    button.small{padding:6px 10px}
+    .ok{background:#103622;color:#dcfff3;border:1px solid #215f41;padding:10px;border-radius:10px;margin-top:6px}
+    .error{background:#3d1717;color:#ffd6d6;border:1px solid #6e3030;padding:10px;border-radius:10px;margin-top:6px}
+    .qr-grid{display:grid;grid-template-columns:1fr 240px;gap:14px;align-items:start}
+    .qr-box{background:#0b2146;border:1px dashed #2f4f8a;border-radius:12px;min-height:240px;display:flex;align-items:center;justify-content:center}
+    .qr-box img{border-radius:10px}
+    /* Audit answer buttons */
+    button.ans { transition: background .15s ease; }
+    button.ans.selected { outline: 2px solid #fff; }
+    button.ans[data-a="Yes"].selected   { background:#1f6f3a; }
+    button.ans[data-a="No"].selected    { background:#7a2727; }
+    button.ans[data-a="Other"].selected { background:#5a4a1b; }
+
+@media (min-width:1100px){
+  #viewApp{
+    display:grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-areas:
+      "visitors   adminqr"
+      "nursing    alerts"
+      "housekeep  alerts"
+      "fridges    alerts"
+      "issues     issues"
+      "adminstaff adminstaff"
+      "auditor    auditor"
+      "superadmin superadmin"
+      "manual     manual"
+      "changepass changepass";
+    gap:12px;
+    align-items:start;
+  }
+}
+
+
+/* Status chips */
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.badge.ok{background:#103622;color:#dcfff3;border:1px solid #215f41}
+.badge.warn{background:#3d1717;color:#ffd6d6;border:1px solid #6e3030}
+.badge.muted{background:#0b2146;color:#b8c5e6;border:1px solid #2f4f8a}
+
+
+    /* Assign areas to cards */
+    #cardVisitors     { grid-area: visitors; }
+    #cardNursing      { grid-area: nursing; }
+    #cardHousekeeping { grid-area: housekeep; }
+    #adminIssuesCard  { grid-area: issues; }
+    #adminQRCard      { grid-area: adminqr; }
+    #cardAlerts       { grid-area: alerts; }
+    #adminLocCard     { grid-area: locs; }
+    #adminStaffCard   { grid-area: adminstaff; }
+    #cardAuditor      { grid-area: auditor; }
+    #manualCard       { grid-area: manual; }
+    #changePassCard   { grid-area: changepass; }
+    #superAdminCard   { grid-area: superadmin; }
+
+    /* Scrollers */
+    .scroll-10{overflow:auto; max-height:520px;}
+    .scroll-10 table{width:100%; border-collapse:separate; border-spacing:0;}
+    .scroll-10 thead th{position:sticky; top:0; background:var(--panel); z-index:1;}
+
+    @media (max-width:760px){.qr-grid{grid-template-columns:1fr}.qr-box{min-height:0}}
+
+    /* Admin – Staff */
+    #adminStaffCard .staff-form-grid{display:grid;grid-template-columns:1fr;gap:8px}
+    @media (min-width:520px){#adminStaffCard .staff-form-grid{grid-template-columns:1fr 1fr}}
+    #adminStaffCard .staff-form-grid .wide{grid-column:1 / -1}
+
+    #adminStaffCard table{table-layout:fixed}
+    #adminStaffCard th, #adminStaffCard td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #adminStaffCard th:nth-child(2), #adminStaffCard td:nth-child(2){width:40%}
+
+    #adminStaffCard .staff-table-wrap{
+      margin-top:12px;
+      overflow-x:auto;
+      overflow-y:auto;
+      max-height:520px;
+      border:1px solid var(--table-b);
+      border-radius:10px;
+    }
+    #adminStaffCard .staff-table-wrap table{
+      width:100%;
+      min-width:740px;
+      table-layout:auto;
+      border-collapse:separate;
+      border-spacing:0;
+    }
+    #adminStaffCard .staff-table-wrap thead th{
+      position:sticky; top:0; background:var(--panel); z-index:1;
+    }
+    #adminStaffCard th, #adminStaffCard td{
+      padding:6px 8px;
+      font-size:14px;
+      white-space:nowrap;
+      overflow:visible;
+      text-overflow:clip;
+    }
+    #adminStaffCard td:last-child{ display:flex; gap:8px; }
+    #adminStaffCard button.small{ font-size: inherit; line-height: inherit; padding: 6px 10px; }
+
+    #adminStaffCard table{ table-layout:auto; }
+    #adminStaffCard th:nth-child(2), #adminStaffCard td:nth-child(2){ max-width:24ch; width:auto; }
+    #adminStaffCard th:nth-child(3), #adminStaffCard td:nth-child(3){ width:7ch; }
+    #adminStaffCard th:nth-child(4), #adminStaffCard td:nth-child(4){ width:14ch; }
+    #adminStaffCard th:nth-child(5), #adminStaffCard td:nth-child(5){ max-width:18ch; }
+    #adminStaffCard th:nth-child(6), #adminStaffCard td:nth-child(6){ white-space:nowrap; }
+
+    /* Issues table tweaks */
+    #adminIssuesCard table{ table-layout:auto; }
+    #adminIssuesCard th, #adminIssuesCard td{ padding:6px 8px; }
+    #adminIssuesCard th:nth-child(2), #adminIssuesCard td:nth-child(2){ width:18ch; }
+    #adminIssuesCard th:nth-child(3), #adminIssuesCard td:nth-child(3){ white-space:normal; }
+    #adminIssuesCard th:nth-child(4), #adminIssuesCard td:nth-child(4){ width:12ch; }
+    #adminIssuesCard th:nth-child(5), #adminIssuesCard td:nth-child(5){ width:16ch; white-space:nowrap; }
+    #adminIssuesCard th:nth-child(6), #adminIssuesCard td:nth-child(6){ white-space:nowrap; }
+
+    /* Use app default font size in tables */
+    #adminStaffCard table, #adminStaffCard th, #adminStaffCard td,
+    #adminIssuesCard table, #adminIssuesCard th, #adminIssuesCard td{
+      font-size: inherit; line-height: inherit;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="/icons/logo.png" alt="Ernos" onerror="this.src='/icons/icon.svg'">
+  </div>
+  <div class="muted" id="meBadge" style="margin-left:auto"></div>
+  <button id="btnLogout" class="secondary" style="display:none">Sign out</button>
+</header>
+
+<div class="container">
+  <!-- LOGIN -->
+  <div id="viewLogin" class="card">
+    <h2>Sign in</h2>
+    <div class="row">
+      <div class="col"><input id="loginUser" value="admin@example.com" placeholder="Username or email"></div>
+      <div class="col"><input id="loginPass" value="Password123" type="password" placeholder="Password"></div>
+      <div class="col" style="align-self:end"><label><input id="rememberMe" type="checkbox" checked> Stay signed in</label></div>
+    </div>
+    <button id="btnLogin">Sign in</button>
+    <div id="loginBox" class="muted" style="margin-top:6px">Ready.</div>
+  </div>
+
+  <!-- APP -->
+  <div id="viewApp" style="display:none">
+    <!-- Admin – QR / NFC -->
+    <div class="card" id="adminQRCard" style="display:none">
+      <h3>Admin – QR / NFC</h3>
+      <div class="qr-grid">
+        <div>
+          <label>Location</label>
+          <select id="qrLocSelect"></select>
+          <div class="row" style="justify-content:flex-end;margin-top:8px;gap:8px">
+            <button id="btnMakeQR">Create QR token</button>
+            <button id="btnPrintQR" class="secondary">Print QR</button>
+            <button id="btnCopyNFC" class="secondary">Copy Tap URL</button>
+            <button id="btnWriteNFC" class="secondary">Write to NFC tag</button>
+          </div>
+          <div class="muted" style="margin-top:6px">
+            <span>Token: <code id="lastToken"></code></span> ·
+            <span>URL: <code id="lastUrl"></code></span>
+          </div>
+          <div id="nfcNote" class="muted" style="margin-top:6px"></div>
+        </div>
+        <div id="qrPreview" class="qr-box"><span class="muted">QR preview</span></div>
+      </div>
+    </div>
+
+    <!-- Nursing Visits -->
+    <div class="card" id="cardNursing">
+      <div class="row" style="align-items:center">
+        <h3 style="margin:0">Nursing Visits</h3>
+        <span id="liveMetaN" class="muted" style="margin-left:8px"></span>
+        <span style="margin-left:auto"></span>
+        <button id="btnCsvN" class="small secondary">CSV</button>
+        <button id="btnRefresh" class="small">Refresh</button>
+      </div>
+      <div id="liveEmptyN" class="muted">No visits.</div>
+      <div class="scroll-10">
+        <table>
+          <thead><tr><th>Staff</th><th>Location</th><th>Time</th><th>Date</th></tr></thead>
+          <tbody id="liveBodyN"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Housekeeping Visits -->
+    <div class="card" id="cardHousekeeping">
+      <div class="row" style="align-items:center">
+        <h3 style="margin:0">Housekeeping Visits</h3>
+        <span id="liveMetaH" class="muted" style="margin-left:8px"></span>
+        <span style="margin-left:auto"></span>
+        <button id="btnCsvHK" class="small secondary">CSV</button>
+      </div>
+      <div id="liveEmptyH" class="muted">No visits.</div>
+      <div class="scroll-10">
+        <table>
+          <thead><tr><th>Staff</th><th>Location</th><th>Time</th><th>Duration (min)</th><th>Date</th></tr></thead>
+          <tbody id="liveBodyH"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Alerts -->
+    <div class="card" id="cardAlerts">
+      <div class="row" style="align-items:center">
+        <h3 style="margin:0">Alerts</h3>
+        <span id="alertsMeta" class="muted" style="margin-left:8px"></span>
+      </div>
+      <div id="alertsWrap">
+        <div id="alertHK" style="margin-top:8px">
+          <h4>Housekeeping over 60 min</h4>
+          <ul id="alertHKList" class="muted"></ul>
+        </div>
+        <div id="alertVisitors" style="margin-top:8px">
+          <h4>Visitors over 3h</h4>
+          <ul id="alertVList" class="muted"></ul>
+        </div>
+        <div id="alertNursing" style="margin-top:8px">
+          <h4>Night checks (20:00–07:00) – due</h4>
+          <ul id="alertNList" class="muted"></ul>
+        </div>
+<div id="alertFridge" style="margin-top:8px">
+  <h4>Fridges – missed / out of range</h4>
+  <ul id="alertFridgeList" class="muted"></ul>
+</div>
+<div id="alertFire" style="margin-top:8px">
+  <h4>Fire checks due</h4>
+  <ul id="alertFireList" class="muted"></ul>
+</div>
+     </div>
+    </div>
+<!-- Fridges -->
+<div class="card" id="cardFridges" style="display:none">
+  <div class="row" style="align-items:center">
+    <h3 style="margin:0">Fridges</h3>
+    <span id="fridgeMeta" class="muted" style="margin-left:8px"></span>
+    <span style="margin-left:auto"></span>
+    <button id="btnCsvFridge" class="small secondary">CSV</button>
+    <button id="btnRefreshFridge" class="small">Refresh</button>
+  </div>
+
+  <!-- Quick log via token (optional, for logging without the tap page) -->
+  <div class="row" style="gap:8px;margin:6px 0">
+    <div class="col"><input id="frToken" placeholder="QR token (from fridge label)"></div>
+    <div class="col"><input id="frTemp" type="number" step="0.1" placeholder="Temp °C (e.g., 5.0)"></div>
+    <div class="col" style="align-self:end"><button id="btnFridgeLog">Save Temp</button></div>
+  </div>
+  <div id="fridgeMsg"></div>
+
+  <!-- Per-fridge status tiles (last reading / due / out of range) -->
+  <div id="fridgeTiles" class="row" style="margin-top:8px"></div>
+
+  <!-- Recent readings table -->
+  <div class="row" style="align-items:center;margin-top:8px">
+    <label class="muted">Filter</label>
+    <select id="fridgeLocFilter" style="max-width:260px;margin-left:8px"></select>
+  </div>
+  <div class="scroll-10" style="margin-top:6px">
+    <table>
+      <thead><tr><th>Fridge</th><th>°C</th><th>When</th><th>Status</th></tr></thead>
+      <tbody id="fridgeBody"></tbody>
+    </table>
+  </div>
+</div>
+
+    <!-- Reception Visitors -->
+    <div class="card" id="cardVisitors" style="display:none">
+      <div class="row" style="align-items:center">
+        <h3 style="margin:0">Reception Visitors</h3>
+        <span id="liveMetaV" class="muted" style="margin-left:8px"></span>
+        <span style="margin-left:auto"></span>
+        <button id="btnVisitorsCsv" class="small secondary">Visitors CSV</button>
+      </div>
+      <div id="liveEmptyV" class="muted">No records.</div>
+      <div class="scroll-10">
+        <table>
+          <thead><tr><th>Visitor(s)</th><th>Resident</th><th>Check-in</th><th>Check-out</th><th>Duration</th><th>Actions</th></tr></thead>
+          <tbody id="liveBodyV"></tbody>
+        </table>
+      </div>
+      <div id="visMsg"></div>
+    </div>
+
+    <!-- Admin – Locations -->
+    <div class="card" id="adminLocCard" style="display:none">
+      <h3>Admin – Locations</h3>
+      <div class="row" style="justify-content:flex-end;margin:-4px 0 8px">
+        <button id="btnCsvLocs" class="small secondary">Locations CSV</button>
+      </div>
+      <div class="row">
+        <div class="col"><input id="newLocName" placeholder="Name"></div>
+        <div class="col">
+          <select id="newLocType">
+  <option>ROOM</option>
+  <option>ASSET</option>
+  <option>RECEPTION</option>
+  <option>FRIDGE</option>
+  <option>FIRE</option>
+</select>
+        </div>
+        <div class="col" style="align-self:end"><button id="btnAddLoc">Add location</button></div>
+      </div>
+      <div id="locMsg"></div>
+      <div class="scroll-10" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Active</th><th>Actions</th></tr></thead>
+          <tbody id="locBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Admin – Staff -->
+    <div class="card" id="adminStaffCard" style="display:none">
+      <h3>Admin – Staff</h3>
+      <div class="row" style="justify-content:flex-end;margin:-4px 0 8px">
+        <button id="btnCsvUsers" class="small secondary">Users CSV</button>
+      </div>
+      <div class="staff-form-grid">
+        <input id="newStaffName" placeholder="Full name">
+        <input id="newStaffUsername" placeholder="Username">
+        <input id="newStaffPass" placeholder="Password" type="password" class="wide">
+        <select id="newStaffRole">
+          <option>USER</option><option>ADMIN</option>
+        </select>
+        <select id="newStaffCategory">
+          <option>NURSING</option>
+          <option>HOUSEKEEPING</option>
+          <option>RECEPTION</option>
+          <option>AUDITOR</option>
+          <option>MAINTENANCE</option>
+        </select>
+        <select id="newStaffTitle" class="wide">
+          <option value="">(Title)</option><option>DON</option><option>CNM</option><option>NURSE</option>
+          <option>HCA</option><option>HOUSEKEEPING</option><option>HOUSE MANAGER</option>
+        </select>
+        <div class="wide" style="text-align:right"><button id="btnAddStaff">Add</button></div>
+      </div>
+      <div id="staffMsg"></div>
+      <div class="staff-table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Category</th><th>Title</th><th>Actions</th></tr></thead>
+          <tbody id="staffBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Maintenance Issues -->
+    <div class="card" id="adminIssuesCard" style="display:none">
+      <div class="row" style="align-items:center">
+        <h3 style="margin:0">Maintenance Issues</h3>
+        <span id="issuesMeta" class="muted" style="margin-left:8px"></span>
+        <span style="margin-left:auto"></span>
+        <button id="btnCsvIssues" class="small secondary">CSV</button>
+      </div>
+      <div id="issuesEmpty" class="muted">No issues reported.</div>
+      <div class="scroll-10">
+        <table>
+          <thead>
+            <tr><th>Status</th><th>Location</th><th>Issue</th><th>By</th><th>When</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="issuesBody"></tbody>
+        </table>
+      </div>
+      <div id="issuesMsg"></div>
+    </div>
+
+    <!-- Superadmin – Sites (Tenants) -->
+    <div class="card" id="superAdminCard" style="display:none">
+      <h3>Superadmin – Sites</h3>
+      <div class="muted" id="saMsg"></div>
+      <div class="row" style="margin:8px 0">
+        <div class="col"><input id="saTenantName" placeholder="Site name (e.g., St. Brigid’s NH)"></div>
+        <div class="col"><input id="saTenantSlug" placeholder="slug (lowercase-dash, e.g., st-brigids)"></div>
+        <div class="col"><input id="saAdminEmail" placeholder="site admin email (username)"></div>
+        <div class="col"><input id="saAdminPass" placeholder="(optional) admin password" type="password"></div>
+        <div class="col" style="align-self:end"><button id="btnSaCreate">Create site</button></div>
+      </div>
+      <div class="scroll-10" style="margin-top:10px">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Slug</th><th>Action</th></tr></thead>
+          <tbody id="saTenantsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Manual Check-In -->
+    <div class="card" id="manualCard">
+      <h3>Manual Check-In</h3>
+      <label>Location</label><select id="locSelect"></select>
+      <label>Note (optional)</label><input id="noteInput">
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button id="btnCheckIn">Check-In</button>
+        <button id="btnCheckoutMine" class="secondary">Check-Out my open visit</button>
+      </div>
+      <div id="ciMsg"></div>
+    </div>
+
+    <!-- Change password -->
+    <div class="card" id="changePassCard">
+      <h3>Change password</h3>
+      <div class="row">
+        <div class="col"><input id="myOldPass" placeholder="Current password" type="password"></div>
+        <div class="col"><input id="myNewPass" placeholder="New password" type="password"></div>
+        <div class="col"><input id="myNewPass2" placeholder="Confirm new password" type="password"></div>
+        <div class="col" style="align-self:end"><button id="btnChangeMyPass">Change</button></div>
+      </div>
+      <div id="myPassMsg"></div>
+    </div>
+
+    <!-- Auditor – Environmental Audit -->
+    <div class="card" id="cardAuditor" style="display:none">
+      <h3>Auditor – Environmental Audit</h3>
+      <div id="auditorMsg" class="muted">Loading…</div>
+      <div class="row" style="margin:8px 0"><button id="btnNewAudit">Start New Audit</button></div>
+      <div id="auditsList"></div>
+      <div id="auditWork" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var API = "", token = "", ME = null, _es = null, _alertsTimer = null, lastQR = null;
+
+  // ---------- tiny helpers ----------
+  function $(id){ return document.getElementById(id); }
+  function auth(){ return token ? {"Authorization":"Bearer "+token} : {}; }
+  function setTxt(id,txt){ var e=$(id); if(e) e.textContent = txt; }
+  function showMsg(id,cls,txt){ var e=$(id); if(e){ e.className = cls || ""; e.textContent = txt; } }
+  function handle(r){ return r.json().then(function(j){ if(!r.ok) throw new Error((j && j.error) || ("HTTP " + r.status)); return j; }); }
+  function mustJson(r){ var ct=(r.headers.get("content-type")||"").toLowerCase(); if(ct.indexOf("application/json")===-1){ throw new Error("Wrong API ("+r.url+"): not JSON"); } return r; }
+  function esc(s){ return String(s||"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+  function computeApi(){ return (localStorage.getItem("ernosApi") || location.origin).replace(/\/+$/,''); }
+function showLogin(){
+  $("viewLogin").style.display = "";
+  $("viewApp").style.display = "none";
+}
+function showApp(){
+  $("viewLogin").style.display = "none";
+  $("viewApp").style.display = "";
+}
+  async function apiGet(path){
+    const api = computeApi();
+    const jwt = localStorage.getItem("ernosToken") || "";
+    const r = await fetch(api + path, { headers: jwt ? {"Authorization":"Bearer "+jwt} : {} });
+    const j = await r.json().catch(()=> ({}));
+    if(!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    return j;
+  }
+
+  async function updateMeBadge(){
+    try{
+      const me = await apiGet("/me");
+      const el = $("meBadge");
+      if (el) el.textContent = (me.name || me.email) + " · " + (me.role || "") + " · " + (me.tenant_name || "No Site");
+      return me;
+    }catch(_){
+      const el = $("meBadge"); if (el) el.textContent = "Not signed in";
+      return null;
+    }
+  }
+
+  // ---------- date/time helpers ----------
+  function parseDateISO(s){
+    if(!s) return null;
+    let t = String(s).trim();
+    if (/[zZ]$/.test(t) || /[+\-]\d{2}:?\d{2}$/.test(t)) {
+      // already tz'd
+    } else if (t.includes("T")) {
+      t += "Z";
+    } else {
+      t = t.replace(" ","T") + "Z";
+    }
+    const d = new Date(t);
+    return isNaN(d) ? null : d;
+  }
+  function toLocalDate(s){
+    const d = parseDateISO(s); if(!d) return "";
+    const dd = String(d.getDate()).padStart(2,"0");
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const yy = String(d.getFullYear()).slice(-2);
+    return dd + "/" + mm + "/" + yy;
+  }
+  function toLocalTime(s){
+    const d = parseDateISO(s); if(!d) return "";
+    return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false});
+  }
+  function durationMin(a,b){
+    const sd = parseDateISO(a), ed = parseDateISO(b);
+    if(!sd || !ed) return "";
+    return String(Math.max(0, Math.round((ed - sd) / 60000)));
+  }
+
+  // ---------- roles & visibility ----------
+  function isAdmin(){ return ME && ME.role === "ADMIN"; }
+  function isSuperAdmin(){ return ME && String(ME.role||"").toUpperCase() === "ADMIN_GLOBAL"; }
+
+  function applyCategoryVisibility(){
+    var cat = String((ME && ME.category) || "").toUpperCase();
+    var showN   = isAdmin() || cat==="NURSING";
+    var showH   = isAdmin() || cat==="HOUSEKEEPING";
+    var showR   = isAdmin() || cat==="RECEPTION";
+    var showAud = isAdmin() || cat==="AUDITOR";
+    var showM   = isAdmin() || cat==="MAINTENANCE";
+
+    var cardN=$("cardNursing"), cardH=$("cardHousekeeping"), manual=$("manualCard"),
+        visitors=$("cardVisitors"), alerts=$("cardAlerts");
+
+    if(cardN) cardN.style.display = showN ? "" : "none";
+    if(cardH) cardH.style.display = showH ? "" : "none";
+    if(visitors) visitors.style.display = showR ? "" : "none";
+    if(alerts) alerts.style.display = (isAdmin() || showN || showH || showR) ? "" : "none";
+
+    var hkSec=$("alertHK"), vSec=$("alertVisitors"), nSec=$("alertNursing");
+    if(hkSec) hkSec.style.display = showH ? "" : "none";
+    if(vSec)  vSec.style.display  = showR ? "" : "none";
+    if(nSec)  nSec.style.display  = showN ? "" : "none";
+
+    if(manual){
+      var allowManual = isAdmin() || cat==="HOUSEKEEPING";
+      manual.style.display = allowManual ? "" : "none";
+      if (cat==="HOUSEKEEPING") {
+        var h3 = manual.querySelector("h3");
+        if(h3) h3.textContent = "Housekeeping - Check-In/Check-Out";
+      }
+    }
+
+    var saCard = $("superAdminCard");
+    var hasTenant = !!(ME && ME.tenant_id);
+    if (saCard) saCard.style.display = isSuperAdmin() ? "" : "none";
+
+    if (isSuperAdmin() && !hasTenant){
+      if ($("adminQRCard")) $("adminQRCard").style.display = "none";
+      if ($("adminLocCard")) $("adminLocCard").style.display = "none";
+      if ($("adminStaffCard")) $("adminStaffCard").style.display = "none";
+      if ($("adminIssuesCard")) $("adminIssuesCard").style.display = "none";
+      if ($("cardVisitors")) $("cardVisitors").style.display = "none";
+      if ($("cardNursing"))  $("cardNursing").style.display  = "none";
+      if ($("cardHousekeeping")) $("cardHousekeeping").style.display = "none";
+      if ($("manualCard")) $("manualCard").style.display = "none";
+      if ($("cardAuditor")) $("cardAuditor").style.display = "none";
+    }
+
+    if ($("adminQRCard"))    $("adminQRCard").style.display    = isAdmin() ? "" : "none";
+    if ($("adminLocCard"))   $("adminLocCard").style.display   = isAdmin() ? "" : "none";
+    if ($("adminStaffCard")) $("adminStaffCard").style.display = isAdmin() ? "" : "none";
+
+    if ($("adminIssuesCard")) $("adminIssuesCard").style.display = showM ? "" : "none";
+
+    if (cat==="MAINTENANCE" && !isAdmin()){
+      if (alerts) alerts.style.display = "none";
+      if (visitors) visitors.style.display = "none";
+      if (cardN) cardN.style.display = "none";
+      if (cardH) cardH.style.display = "none";
+      if (manual) manual.style.display = "none";
+      if ($("cardAuditor")) $("cardAuditor").style.display = "none";
+      var c = $("adminIssuesCard"); if(c){ c.style.gridColumn = "1 / -1"; }
+    } else {
+      if ($("cardAuditor")) $("cardAuditor").style.display = showAud ? "" : "none";
+    }
+  }
+
+  // === NEW: ensure the "ADMIN_GLOBAL" role is selectable in the Staff form ===
+  function maybeUnlockRootRole(){
+    var sel = $("newStaffRole");
+    if (!sel) return;
+    var has = Array.prototype.some.call(sel.options, function(o){ return String(o.value||o.text||"").toUpperCase()==="ADMIN_GLOBAL"; });
+    if (!has){
+      var opt = document.createElement("option");
+      opt.value = "ADMIN_GLOBAL";
+      opt.text  = "ADMIN_GLOBAL";
+      sel.appendChild(opt);
+    }
+  }
+
+  // ---------- data refreshers ----------
+  function refreshOpen(){
+    fetch(API+"/checkins",{headers:auth()}).then(mustJson).then(handle).then(function(j){
+      var rows=j.items||[];
+      var n = rows.filter(function(r){ return String(r.user_category||"").toUpperCase()==="NURSING"; });
+      var h = rows.filter(function(r){ return String(r.user_category||"").toUpperCase()==="HOUSEKEEPING"; });
+
+      setTxt("liveMetaN","Count: "+n.length);
+      setTxt("liveMetaH","Count: "+h.length);
+      if ($("liveEmptyN")) $("liveEmptyN").style.display = n.length ? "none" : "";
+      if ($("liveEmptyH")) $("liveEmptyH").style.display = h.length ? "none" : "";
+
+      var tbn=$("liveBodyN"); if(tbn) tbn.innerHTML="";
+      n.forEach(function(r){
+        var tr=document.createElement("tr");
+        tr.innerHTML="<td>"+esc(r.user_name)+"</td><td>"+esc(r.location_name)+"</td><td>"+esc(toLocalTime(r.checkin_at))+"</td><td>"+esc(toLocalDate(r.checkin_at))+"</td>";
+        if(tbn) tbn.appendChild(tr);
+      });
+
+      var tbh=$("liveBodyH"); if(tbh) tbh.innerHTML="";
+      h.forEach(function(r){
+        var tr=document.createElement("tr");
+        var dur = durationMin(r.checkin_at, r.checkout_at);
+        tr.innerHTML="<td>"+esc(r.user_name)+"</td><td>"+esc(r.location_name)+"</td><td>"+esc(toLocalTime(r.checkin_at))+"</td><td>"+(dur||"")+"</td><td>"+esc(toLocalDate(r.checkin_at))+"</td>";
+        if(tbh) tbh.appendChild(tr);
+      });
+    }).catch(function(e){
+      setTxt("liveMetaN","Error: "+e.message);
+      setTxt("liveMetaH","Error: "+e.message);
+    });
+  }
+
+  function refreshVisitors(){
+    fetch(API+"/visitors",{headers:auth()}).then(mustJson).then(handle).then(function(j){
+      var rows=j.items||[];
+      setTxt("liveMetaV","Count: "+rows.length);
+      if ($("liveEmptyV")) $("liveEmptyV").style.display = rows.length ? "none" : "";
+      var tb=$("liveBodyV"); if(tb) tb.innerHTML="";
+      rows.forEach(function(r){
+        var all = (r.names? JSON.parse(r.names||"[]"):[]) || [];
+        var joined = Array.isArray(all) ? all.join(", ") : (r.primary_name||"");
+        var dur = durationMin(r.checkin_at, r.checkout_at);
+        var tr=document.createElement("tr");
+        tr.innerHTML="<td>"+esc(joined||r.primary_name||"")+"</td>"+
+                     "<td>"+esc(r.resident||"")+"</td>"+
+                     "<td>"+esc(toLocalTime(r.checkin_at))+" "+esc(toLocalDate(r.checkin_at))+"</td>"+
+                     "<td>"+(r.checkout_at? (esc(toLocalTime(r.checkout_at))+" "+esc(toLocalDate(r.checkout_at))) : "")+"</td>"+
+                     "<td>"+(dur||"")+"</td>"+
+                     "<td>"+(r.checkout_at?"":("<button class='small x'>Check out</button>"))+"</td>";
+        if(!r.checkout_at){
+          tr.querySelector(".x").onclick=function(){
+            fetch(API+"/visitors/"+r.id+"/checkout",{method:"POST",headers:Object.assign({"Content-Type":"application/json"},auth())})
+              .then(mustJson).then(handle).then(function(){ refreshVisitors(); })
+              .catch(function(e){ showMsg("visMsg","error", e.message); });
+          };
+        }
+        if(tb) tb.appendChild(tr);
+      });
+    }).catch(function(e){ setTxt("liveMetaV","Error: "+e.message); });
+  }
+
+  function statusBadge(s){
+    var t = String(s||"OPEN").toUpperCase();
+    var bg = (t==="ACCEPTED") ? "#103622" : (t==="RESOLVED") ? "#1d3d1d" : "#3d1717";
+    var fg = (t==="ACCEPTED") ? "#dcfff3" : (t==="RESOLVED") ? "#e5ffea" : "#ffd6d6";
+    return "<span style='padding:4px 8px;border-radius:8px;background:"+bg+";color:"+fg+";font-weight:600;font-size:12px'>"+t+"</span>";
+  }
+  function refreshIssues(){
+    fetch(API + "/issues", { headers: auth() })
+      .then(mustJson).then(handle)
+      .then(function(j){
+        var rows = j.items || [];
+        var b = $("issuesBody"); if (b) b.innerHTML = "";
+        setTxt("issuesMeta", "Count: " + rows.length);
+        if ($("issuesEmpty")) $("issuesEmpty").style.display = rows.length ? "none" : "";
+
+        var canAct = isAdmin() || String((ME&&ME.category)||"").toUpperCase()==="MAINTENANCE";
+
+        rows.forEach(function(r){
+          var tr = document.createElement("tr");
+          var actHtml = "";
+          var st = String(r.status||"OPEN").toUpperCase();
+          if (canAct){
+            if (st === "OPEN"){
+              actHtml = "<button class='small a-accept'>Accept</button> "+
+                        "<button class='small secondary a-resolve'>Resolve</button> "+
+                        "<button class='small secondary a-comment'>Comment</button>";
+            } else if (st === "ACCEPTED"){
+              actHtml = "<button class='small a-resolve'>Resolve</button> "+
+                        "<button class='small secondary a-comment'>Comment</button>";
+            } else {
+              actHtml = "<button class='small secondary a-comment'>Comment</button>";
+            }
+          }
+          tr.innerHTML =
+            "<td>"+statusBadge(st)+"</td>"+
+            "<td>"+esc(r.location_name||"")+"</td>"+
+            "<td>"+esc(r.text||"")+(r.maintenance_comment?("<div class='muted' style='margin-top:4px'>Note: "+esc(r.maintenance_comment)+"</div>"):"")+"</td>"+
+            "<td>"+esc(r.user_name||"")+"</td>"+
+            "<td>"+esc(toLocalTime(r.created_at))+" "+esc(toLocalDate(r.created_at))+"</td>"+
+            "<td>"+actHtml+"</td>";
+          if (b) b.appendChild(tr);
+
+          if (canAct){
+            var bind = function(sel, fn){ var el = tr.querySelector(sel); if(el) el.onclick = fn; };
+            bind(".a-accept", function(){
+              fetch(API+"/issues/"+r.id+"/accept", { method:"POST", headers: auth() })
+                .then(mustJson).then(handle).then(refreshIssues)
+                .catch(function(e){ showMsg("issuesMsg","error", e.message); });
+            });
+            bind(".a-resolve", function(){
+              var c = prompt("Maintenance note (optional):", r.maintenance_comment||"");
+              fetch(API+"/issues/"+r.id+"/resolve", {
+                method:"POST",
+                headers: Object.assign({"Content-Type":"application/json"}, auth()),
+                body: JSON.stringify({ comment: c||"" })
+              })
+              .then(mustJson).then(handle).then(refreshIssues)
+              .catch(function(e){ showMsg("issuesMsg","error", e.message); });
+            });
+            bind(".a-comment", function(){
+              var c = prompt("Add / replace maintenance note:", r.maintenance_comment||"");
+              if (c==null) return;
+              fetch(API+"/issues/"+r.id+"/comment", {
+                method:"POST",
+                headers: Object.assign({"Content-Type":"application/json"}, auth()),
+                body: JSON.stringify({ comment: c||"" })
+              })
+              .then(mustJson).then(handle).then(refreshIssues)
+              .catch(function(e){ showMsg("issuesMsg","error", e.message); });
+            });
+          }
+        });
+      })
+      .catch(function(e){ setTxt("issuesMeta","Error: "+e.message); });
+  }
+
+  function refreshAlerts(){
+    fetch(API+"/alerts",{headers:auth()}).then(mustJson).then(handle).then(function(j){
+      var hk=j.housekeeping_overdue||[], vo=j.visitors_overdue||[], nn=j.nursing_night_due||[];
+      var total = hk.length + vo.length + nn.length;
+      setTxt("alertsMeta","Total: "+total);
+
+      var hkList = $("alertHKList"); if(hkList){ hkList.innerHTML = hk.map(function(x){
+        return "<li>"+esc(x.location_name)+" — open "+esc(String(x.minutes_open))+" min ("+esc(toLocalTime(x.checkin_at))+" "+esc(toLocalDate(x.checkin_at))+")</li>";
+      }).join(""); }
+
+      var vList = $("alertVList"); if(vList){ vList.innerHTML = vo.map(function(x){
+        var h = Math.round((parseFloat(x.hours_open||0))*10)/10;
+        return "<li>"+esc(x.primary_name)+" → "+esc(x.resident)+" — "+esc(String(h))+" h</li>";
+      }).join(""); }
+
+      var nList = $("alertNList"); if(nList){ nList.innerHTML = nn.map(function(x){
+        return "<li>"+esc(x.location_name)+" — check due (no nursing entry in last 60 minutes)</li>";
+      }).join(""); }
+      // Fridge alerts (server: fridge_due + fridge_out_of_range)
+var fm = j.fridge_due || [];
+var fr = j.fridge_out_of_range || [];
+var fList = $("alertFridgeList");
+if (fList) {
+  var lines = [];
+  fm.forEach(function(x){
+    lines.push(
+      "<li>⚠️ Missed reading — " +
+      esc(x.location_name||"") +
+      (x.last_at ? (" (last: " + esc(toLocalTime(x.last_at)) + " " + esc(toLocalDate(x.last_at)) + ")") : " (none)") +
+      "</li>"
+    );
+  });
+  fr.forEach(function(x){
+    var min = (x.range && x.range[0] != null) ? x.range[0] : "?";
+    var max = (x.range && x.range[1] != null) ? x.range[1] : "?";
+    lines.push(
+      "<li>❌ Out of range — " +
+      esc(x.location_name||"") +
+      " (" + esc(String(x.last_temp_c)) + "°C; allowed " + esc(String(min)) + "–" + esc(String(max)) + "°C)</li>"
+    );
+  });
+  fList.innerHTML = lines.join("");
+}
+// NEW: Fire due
+var fd = j.fire_due || [];
+var fireList = $("alertFireList");
+if (fireList) {
+  fireList.innerHTML = fd.map(function(x){
+    var when = (x.days_since==null ? "never" : (String(x.days_since)+" days ago"));
+    return "<li>⏳ " + esc(x.kind||"") + " — " + esc(x.location_name||"") + " ("+ when +")</li>";
+  }).join("");
+
+  // 🔻 ADD THIS: show fire drill overdue
+  var fdr = j.fire_drill_due || null;
+  if (fdr && fdr.overdue) {
+    fireList.innerHTML +=
+      "<li>🚨 Drill overdue — last " +
+      (fdr.last_at ? esc(toLocalDate(fdr.last_at)) : "never") +
+      " (" + esc(String(fdr.days_since)) + " days)</li>";
+  }
+}
+
+    }).catch(function(e){
+      setTxt("alertsMeta","Error: "+e.message);
+    });
+  }
+// ===== Fridges UI =====
+var CFG = { fridge:{ min:2, max:8, dueH:24 } };
+var FR_LOCATIONS = [];
+function setFridgeMsg(cls, txt){ showMsg("fridgeMsg", cls, txt); }
+
+async function loadConfig(){
+  try{
+    const j = await apiGet("/config");
+    const f = (j.config && j.config.schedules && j.config.schedules.fridge) || {};
+    CFG.fridge = { min: Number(f.min_c ?? 2), max: Number(f.max_c ?? 8), dueH: Number(f.due_hours ?? 24) };
+  }catch(_){}
+}
+function withinRange(v){ return v>=CFG.fridge.min && v<=CFG.fridge.max; }
+function fmtTemp(v){ return (v==null||v==="") ? "" : (Number(v).toFixed(1)+"°C"); }
+function rebuildFridgeFilter(){
+  const sel = $("fridgeLocFilter"); if (!sel) return;
+  sel.innerHTML = "";
+  var all = document.createElement("option"); all.value=""; all.textContent="All fridges";
+  sel.appendChild(all);
+  FR_LOCATIONS.forEach(x=>{
+    var o=document.createElement("option"); o.value=String(x.id); o.textContent=x.name; sel.appendChild(o);
+  });
+}
+async function loadFridgeLogs(){
+  try{
+    const locId = ($("fridgeLocFilter") && $("fridgeLocFilter").value) || "";
+    const qs = locId ? ("?locationId="+encodeURIComponent(locId)) : "";
+    const j = await apiGet("/fridge/logs"+qs);
+    const rows = j.items || [];
+    setTxt("fridgeMeta", "Readings: " + rows.length + " · Range " + CFG.fridge.min + "–" + CFG.fridge.max + "°C (due " + CFG.fridge.dueH + "h)");
+    const tb = $("fridgeBody"); if (tb) tb.innerHTML = "";
+    rows.forEach(r=>{
+      const ok = Number.isFinite(Number(r.temp_c)) && withinRange(Number(r.temp_c));
+      const tdStatus = ok ? "<span class='badge ok'>OK</span>" : "<span class='badge warn'>Out</span>";
+      var tr=document.createElement("tr");
+      tr.innerHTML =
+        "<td>"+esc(r.location_name||"")+"</td>"+
+        "<td>"+esc(Number(r.temp_c).toFixed(1))+"</td>"+
+        "<td>"+esc(toLocalTime(r.taken_at))+" "+esc(toLocalDate(r.taken_at))+"</td>"+
+        "<td>"+tdStatus+"</td>";
+      if (tb) tb.appendChild(tr);
+    });
+    await renderFridgeTiles();
+  }catch(e){
+    setTxt("fridgeMeta","Error: "+(e && e.message? e.message : e));
+  }
+}
+async function renderFridgeTiles(){
+  try{
+    const j = await apiGet("/alerts");
+    const due   = new Map((j.fridge_due || []).map(x=>[String(x.location_id), x]));
+    const oor   = new Map((j.fridge_out_of_range || []).map(x=>[String(x.location_id), x]));
+    const html = [];
+    FR_LOCATIONS.forEach(fr=>{
+      const d = due.get(String(fr.id));
+      const o = oor.get(String(fr.id));
+      let line1 = esc(fr.name||""); let line2 = ""; let cls = "muted";
+      if (o){
+        line2 = (o.last_temp_c!=null ? (o.last_temp_c.toFixed(1)+"°C") : "?")+" · out of "+CFG.fridge.min+"–"+CFG.fridge.max+"°C";
+        cls = "warn";
+      } else if (d){
+        const mins = d.minutes_since != null ? (d.minutes_since+" min") : "due";
+        line2 = "Missed reading · " + mins;
+        cls = "warn";
+      } else { line2 = "OK or recent"; cls = "ok"; }
+      html.push(
+        "<div class='col' style='min-width:220px'>" +
+          "<div class='badge "+cls+"'>"+(cls==="warn"?"ALERT":"OK")+"</div>" +
+          "<div style='margin-top:6px;font-weight:700'>"+line1+"</div>" +
+          "<div class='muted'>"+esc(line2)+"</div>" +
+        "</div>"
+      );
+    });
+    const wrap = $("fridgeTiles"); if (wrap) wrap.innerHTML = html.join("");
+  }catch(_){}
+}
+function bindFridgeUi(){
+  const card = $("cardFridges");
+  const cat = String((ME && ME.category)||"").toUpperCase();
+  const show = isAdmin() || cat==="NURSING" || cat==="HOUSEKEEPING";
+  if (card) card.style.display = show ? "" : "none";
+
+  const btn = $("btnFridgeLog");
+  if (btn && !btn.__bound){
+    btn.__bound = true;
+    btn.onclick = function(){
+      const tok = ($("frToken").value||"").trim();
+      const t = parseFloat($("frTemp").value);
+      if (!tok){ setFridgeMsg("error","Paste the QR token from the fridge label."); return; }
+      if (!Number.isFinite(t)){ setFridgeMsg("error","Enter a valid number."); return; }
+      fetch((API||computeApi()) + "/fridge/log", {
+        method:"POST",
+        headers: Object.assign({"Content-Type":"application/json"}, auth()),
+        body: JSON.stringify({ token: tok, temp_c: t })
+      })
+      .then(mustJson).then(handle)
+      .then(function(){
+        setFridgeMsg("ok","Saved.");
+        $("frTemp").value = "";
+        loadFridgeLogs();
+        refreshAlerts();
+      })
+      .catch(function(e){ setFridgeMsg("error", e.message); });
+    };
+  }
+  const sel = $("fridgeLocFilter");
+  if (sel && !sel.__bound){ sel.__bound = true; sel.onchange = loadFridgeLogs; }
+  const btnCsv = $("btnCsvFridge");
+  if (btnCsv && !btnCsv.__bound){
+    btnCsv.__bound = true;
+    btnCsv.onclick = function(){
+      const locId = ($("fridgeLocFilter") && $("fridgeLocFilter").value) || "";
+      const qs = locId ? ("?csv=1&locationId="+encodeURIComponent(locId)) : "?csv=1";
+      dlCsv("/fridge/logs"+qs, "fridge_logs.csv");
+    };
+  }
+  const btnR = $("btnRefreshFridge");
+  if (btnR && !btnR.__bound){ btnR.__bound = true; btnR.onclick = loadFridgeLogs; }
+}
+function initFridgesFromLocations(items){
+  FR_LOCATIONS = (items||[]).filter(x => String(x.type||"").toUpperCase()==="FRIDGE")
+                            .map(x => ({ id:x.id, name:x.name }));
+  rebuildFridgeFilter();
+}
+
+  // ---------- CSV download ----------
+  function dlCsv(url, filename){
+    fetch(API + url, { headers: auth() })
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
+      .then(function(b){
+        var a=document.createElement("a");
+        a.href = URL.createObjectURL(b);
+        a.download = filename;
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 300);
+      })
+      .catch(function(e){ showMsg("visMsg","error", e.message); });
+  }
+  function bindCsvButton(id, path, filename) {
+    const btn = $(id);
+    if (btn) btn.onclick = () => dlCsv(path, filename);
+  }
+
+  // ---------- Buttons: Ping/Login/Logout ----------
+  var _btnPing = $("btnPing");
+  if (_btnPing) {
+    _btnPing.onclick = function(){
+      API = computeApi();
+      fetch(API + "/health", { cache:"no-store" })
+        .then(mustJson).then(function(r){return r.json();})
+        .then(function(){ alert("API OK"); })
+        .catch(function(e){ alert("Ping failed: " + e.message); });
+    };
+  }
+
+  $("btnLogin").onclick = async function () {
+    try {
+      API = computeApi();
+
+      const userVal = ($("loginUser").value || "").trim();
+      const passVal = $("loginPass").value || "";
+
+      const userKey = userVal.includes("@") ? "email" : "username";
+      const body = {}; body[userKey] = userVal; body.password = passVal;
+
+      showMsg("loginBox","muted","Signing in…");
+
+      // attempt 1
+      let r = await fetch(API + "/auth/login", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(body)
+      });
+
+      // fallback if the server only accepts "username"
+      if (!r.ok && userKey === "email") {
+        const fallback = { username: userVal, password: passVal };
+        r = await fetch(API + "/auth/login", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(fallback)
+        });
+      }
+
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+
+      token = j.token || "";
+      if ($("rememberMe").checked && token) {
+        try { localStorage.setItem("ernosToken", token); } catch(_) {}
+      }
+
+      const meRes = await fetch(API + "/me", { headers: auth(), cache: "no-store" });
+      const me = await meRes.json();
+      if (!meRes.ok) throw new Error(me.error || ("HTTP " + meRes.status));
+
+      ME = me;
+      $("btnLogout").style.display = "";
+      $("viewLogin").style.display = "none";
+      $("viewApp").style.display = "";
+ try { history.pushState({view:"app"}, "", "#app"); } catch(_){}
+
+      updateMeBadge();
+      applyCategoryVisibility();
+      // NEW: make sure ADMIN_GLOBAL is selectable
+      maybeUnlockRootRole();
+
+      const boot = (!isSuperAdmin() || (ME && ME.tenant_id)) ? [loadLocations(), loadStaff()] : [loadTenants()];
+      await Promise.all(boot);
+
+      if (!isSuperAdmin() || (ME && ME.tenant_id)) {
+        refreshOpen(); refreshVisitors(); refreshIssues(); refreshAlerts(); startEvents();
+        if (_alertsTimer) clearInterval(_alertsTimer);
+        _alertsTimer = setInterval(function(){ refreshAlerts(); refreshIssues(); }, 60000);
+      }
+// Fridges boot: read 2–8°C from /config, show card, load readings
+loadConfig().then(function(){
+  bindFridgeUi();
+  loadFridgeLogs();
+});
+
+      window.__ERNOS_API__ = API;
+      window.__ERNOS_TOKEN__ = token;
+      window.__ERNOS_ME__ = ME;
+      mountAuditor();
+      showMsg("loginBox","ok","Signed in.");
+    } catch (e) {
+      showMsg("loginBox","error", e && e.message ? e.message : "Sign-in failed");
+    }
+  };
+
+$("btnLogout").onclick = function(){
+  token = ""; ME = null;
+  try { localStorage.removeItem("ernosToken"); } catch(_){}
+  showLogin();
+  try { history.replaceState({view:"login"}, "", "#login"); } catch(_){}
+};
+
+  // ---------- Manual Check-In / Out ----------
+  $("btnCheckIn").onclick=function(){
+    var cat = String((ME&&ME.category)||"").toUpperCase();
+    if(!isAdmin() && cat!=="HOUSEKEEPING"){ showMsg("ciMsg","error","Only Housekeeping can check in manually."); return; }
+    fetch(API+"/checkin",{method:"POST",headers:Object.assign({"Content-Type":"application/json"},auth()),body:JSON.stringify({locationId:$("locSelect").value,note:$("noteInput").value})})
+      .then(mustJson).then(handle)
+      .then(function(){ showMsg("ciMsg","ok","Checked in."); refreshOpen(); })
+      .catch(function(e){ showMsg("ciMsg","error", e.message); });
+  };
+  $("btnCheckoutMine").onclick=function(){
+    var cat = String((ME&&ME.category)||"").toUpperCase();
+    if(!isAdmin() && cat!=="HOUSEKEEPING"){ showMsg("ciMsg","error","Only Housekeeping can check out manually."); return; }
+    fetch(API+"/checkins",{headers:auth()}).then(mustJson).then(handle).then(function(j){
+      var mine=(j.items||[]).find(function(x){return x.user_name===ME.name && !x.checkout_at});
+      if(!mine){ showMsg("ciMsg","ok","No open visit."); return; }
+      fetch(API+"/checkout",{method:"POST",headers:Object.assign({"Content-Type":"application/json"},auth()),body:JSON.stringify({checkinId:mine.id})})
+        .then(mustJson).then(handle)
+        .then(function(r){ showMsg("ciMsg","ok","Checked out. Duration: "+(r.durationMin!=null? r.durationMin+" min" : "n/a")); refreshOpen(); })
+        .catch(function(e){ showMsg("ciMsg","error", e.message); });
+    });
+  };
+  var _btnRefresh=$("btnRefresh"); if(_btnRefresh) _btnRefresh.onclick=function(){ refreshOpen(); };
+
+  // ---------- QR / NFC ----------
+  $("btnMakeQR").onclick = function () {
+    var sel = $("qrLocSelect");
+    var locId = parseInt((sel && sel.value) || "0", 10);
+    if (!locId) { alert("Choose a location"); return; }
+    API = computeApi();
+    fetch(API + "/qrcodes", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, auth()),
+      body: JSON.stringify({ locationId: locId })
+    })
+      .then(mustJson).then(handle)
+      .then(function (j) {
+        var opt = sel.options[sel.selectedIndex];
+        var locName = opt ? opt.text.replace(/\s*\([^)]*\)\s*$/, "") : "Location";
+        var tapUrl = j.urlTap;
+        lastQR = { token: j.token, tapUrl: tapUrl, name: locName };
+        window.lastQR = lastQR;
+        setTxt("lastToken", j.token || "");
+        setTxt("lastUrl", tapUrl || "");
+        $("qrPreview").innerHTML =
+          "<img alt='QR' width='220' height='220' src='https://quickchart.io/qr?size=220&text=" + encodeURIComponent(tapUrl) + "'>";
+        setNfcNote("Tip: Copy Tap URL to program NFC with an external app if Web NFC isn't supported.", "muted");
+      })
+      .catch(function (e) { showMsg("locMsg", "error", e.message); });
+  };
+
+  $("btnPrintQR").onclick = function () {
+    if (!lastQR) { alert("Create a QR first."); return; }
+    var q = lastQR;
+    var html = "<!doctype html><html><head><meta charset='utf-8'><title>QR - " + esc(q.name || "Location") + "</title>" +
+      "<style>@page{size:A4;margin:14mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#000}" +
+      ".wrap{max-width:720px;margin:24px auto;text-align:center}.header{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:6px}" +
+      "h1{font-size:28px;margin:4px 0 12px}.muted{color:#555}img{width:360px;height:360px;display:block;margin:12px auto}" +
+      ".box{border:1px solid #ccc;border-radius:8px;padding:12px}</style></head>" +
+      "<body onload=\"setTimeout(function(){print()},150)\"><div class='wrap'><div class='header'><strong>Ernos</strong></div>" +
+      "<div class='box'><h1>" + esc(q.name || "Location") + "</h1><img src='https://quickchart.io/qr?size=360&text=" + encodeURIComponent(q.tapUrl) + "' alt='QR'><p class='muted'>URL: " + esc(q.tapUrl) + "<br>Token: " + esc(q.token || "") + "</p></div></div></body></html>";
+    var w = window.open('', '_blank'); if (!w) { alert('Popup blocked'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(function () { try { w.focus(); w.print(); } catch (e) { } }, 300);
+  };
+  $("btnCopyNFC").onclick = function () {
+    if (!lastQR) { alert("Create a QR first."); return; }
+    try { navigator.clipboard.writeText(lastQR.tapUrl).then(function () { alert("Copied: " + lastQR.tapUrl); }).catch(function () { alert(lastQR.tapUrl); }); } catch (_) { alert(lastQR.tapUrl); }
+  };
+
+  function hasWebNFC() { return window.isSecureContext && ("NDEFReader" in window); }
+  function setNfcNote(text, kind){
+    var el = $("nfcNote"); if (!el) return;
+    el.className = (kind === "ok" ? "ok" : kind === "error" ? "error" : "muted");
+    el.textContent = text;
+  }
+  async function writeNdefUrl(url) {
+    const ndef = new NDEFReader();
+    await ndef.write({ records: [{ recordType: "url", data: url }] });
+  }
+  (function initNfcUi(){
+    var btn = $("btnWriteNFC"); if (!btn) return;
+    if (!hasWebNFC()) {
+      btn.style.display = "none";
+      setNfcNote("Web NFC not available. Use an external NFC app with the Tap URL.", "muted");
+      return;
+    }
+    btn.style.display = "";
+    setNfcNote("Web NFC available. Create a QR first, then tap 'Write to NFC tag'.", "muted");
+    btn.onclick = async function(){
+      try{
+        if (!window.lastQR || !lastQR.tapUrl) { alert("Create a QR first to get the Tap URL."); return; }
+        setNfcNote("Hold the NFC tag near your phone…", "muted");
+        await writeNdefUrl(lastQR.tapUrl);
+        setNfcNote("✅ NFC tag written with: " + lastQR.tapUrl, "ok");
+      }catch(e){
+        setNfcNote("NFC write failed: " + (e && e.message ? e.message : e), "error");
+      }
+    };
+  })();
+
+  // ---------- Admin: Add staff ----------
+  $("btnAddStaff").onclick = function () {
+    try {
+      API = computeApi();
+      var name = ($("newStaffName").value || "").trim();
+      var username = ($("newStaffUsername").value || "").trim();
+      var password = ($("newStaffPass").value || "").trim();
+      var role = (( $("newStaffRole") && $("newStaffRole").value ) || "USER").toString().toUpperCase();
+      var category = (( $("newStaffCategory") && $("newStaffCategory").value ) || "NURSING").toString().toUpperCase();
+      var title = ( $("newStaffTitle") ? $("newStaffTitle").value : "" );
+      if (!name || !username || !password) { showMsg("staffMsg","error","Fill name, username, and password."); return; }
+
+      fetch(API + "/users", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, auth()),
+        body: JSON.stringify({ name: name, email: username, password: password, role: role, category: category, title: title })
+      })
+      .then(mustJson).then(handle)
+      .then(function () {
+        $("newStaffName").value = "";
+        $("newStaffUsername").value = "";
+        $("newStaffPass").value = "";
+        showMsg("staffMsg","ok","Added.");
+        return loadStaff();
+      })
+      .catch(function (e) { showMsg("staffMsg","error", e.message); });
+    } catch (err) {
+      showMsg("staffMsg","error", err.message || String(err));
+    }
+  };
+
+  // ---------- My password ----------
+  $("btnChangeMyPass").onclick = function(){
+    var a = $("myOldPass").value || "", b = $("myNewPass").value || "", c = $("myNewPass2").value || "";
+    if (!a || !b || !c) { showMsg("myPassMsg","error","Fill in all fields."); return; }
+    if (b !== c) { showMsg("myPassMsg","error","New passwords do not match."); return; }
+    fetch(API + "/users/me/password", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type":"application/json" }, auth()),
+      body: JSON.stringify({ oldPassword: a, newPassword: b })
+    })
+    .then(mustJson).then(handle)
+    .then(function(){ $("myOldPass").value=""; $("myNewPass").value=""; $("myNewPass2").value=""; showMsg("myPassMsg","ok","Updated."); })
+    .catch(function(e){ showMsg("myPassMsg","error", e.message); });
+  };
+
+  // ---------- SSE live ----------
+  function startEvents(){
+    if (_es) return;
+    try{
+      _es = new EventSource(API + "/events");
+      _es.addEventListener("ready", function(){ refreshOpen(); refreshVisitors(); refreshAlerts(); });
+      _es.addEventListener("visits", function(){ refreshOpen(); refreshAlerts(); refreshIssues(); });
+      _es.addEventListener("visitors", function(){ refreshVisitors(); refreshAlerts(); });
+      _es.addEventListener("issues", function(){ refreshIssues(); });
+      _es.onerror = function(){ try{ _es.close(); }catch(_){} _es = null; setTimeout(startEvents, 1500); };
+    }catch(_){}
+  }
+
+  // ---------- Superadmin helpers ----------
+  function saMsg(cls, txt){ showMsg("saMsg", cls, txt); }
+
+  function loadTenants(){
+    if (!isSuperAdmin()) return Promise.resolve();
+    return fetch(API + "/admin/tenants", { headers: auth() })
+      .then(mustJson).then(handle)
+      .then(function(j){
+        var tb = $("saTenantsBody"); if (!tb) return;
+        tb.innerHTML = "";
+        (j.items||[]).forEach(function(t){
+          var tr = document.createElement("tr");
+          tr.innerHTML = "<td>"+esc(t.id)+"</td>"+
+                         "<td>"+esc(t.name)+"</td>"+
+                         "<td>"+esc(t.slug||"")+"</td>"+
+                         "<td><button class='small sa-switch'>Switch</button></td>";
+          tr.querySelector(".sa-switch").onclick = function(){
+            fetch(API + "/admin/switch-tenant", {
+              method:"POST",
+              headers: Object.assign({"Content-Type":"application/json"}, auth()),
+              body: JSON.stringify({ tenantId: t.id })
+            })
+            .then(mustJson).then(handle)
+            .then(function(resp){
+              token = resp.token;
+              try{ localStorage.setItem("ernosToken", token); }catch(_){}
+              return apiGet("/me").then(function(me){
+                ME = me;
+                updateMeBadge();
+                applyCategoryVisibility();
+                maybeUnlockRootRole();
+                return Promise.all([loadLocations(), loadStaff()]).then(function(){
+                  refreshOpen(); refreshVisitors(); refreshIssues(); refreshAlerts(); startEvents();
+                });
+              });
+            })
+            .catch(function(e){ saMsg("error", e.message); });
+          };
+          tb.appendChild(tr);
+        });
+        saMsg("muted", (j.items||[]).length ? "Pick a site to switch into." : "No sites yet — create one below.");
+      })
+      .catch(function(e){ saMsg("error", e.message); });
+  }
+
+  function createTenant(){
+    var name = ($("saTenantName").value||"").trim();
+    var slug = ($("saTenantSlug").value||"").trim();
+    var adminEmail = ($("saAdminEmail").value||"").trim().toLowerCase();
+    var adminPassword = ($("saAdminPass").value||"").trim();
+    if (!name || !slug || !adminEmail){ saMsg("error","Fill name, slug, and admin email."); return; }
+
+    fetch(API + "/admin/tenants", {
+      method:"POST",
+      headers: Object.assign({"Content-Type":"application/json"}, auth()),
+      body: JSON.stringify({ name, slug, adminEmail, adminPassword })
+    })
+    .then(mustJson).then(handle)
+    .then(function(r){
+      saMsg("ok", "Site created: "+r.tenantName+" ("+r.tenantSlug+"). Admin: "+r.adminEmail+".");
+      $("saAdminPass").value="";
+      return loadTenants();
+    })
+    .catch(function(e){ saMsg("error", e.message); });
+  }
+  var _btnSaCreate = $("btnSaCreate"); if (_btnSaCreate) _btnSaCreate.onclick = createTenant;
+
+  // ---------- Auditor (integrated) ----------
+  var AUD = { questions: [], grouped: {}, currentAudit: null, byLoc: {}, currentLocId: null };
+  function setAuditorMsg(cls, txt){ var el=$("auditorMsg"); if(!el) return; el.className=(cls==="error"?"error":(cls==="ok"?"ok":"muted")); el.textContent=txt; }
+
+  function groupAudQs(){
+    AUD.grouped = {};
+    (AUD.questions||[]).forEach(function(q){
+      var s=q.section||"General";
+      (AUD.grouped[s]=AUD.grouped[s]||[]).push(q);
+    });
+    window.__ERNOS_AUD_GROUPED__ = AUD.grouped;
+  }
+  function loadEnvQuestions(){
+    return fetch(API + "/env/questions", { headers: auth() })
+      .then(mustJson).then(handle)
+      .then(function(j){
+        AUD.questions = (j.items||[]).map(function(x){ return { id:x.id, section:x.section, text:x.text }; });
+        groupAudQs();
+      });
+  }
+  function listAudits(){
+    return fetch(API + "/env/audits", { headers: auth() })
+      .then(mustJson).then(handle)
+      .then(function(j){
+        var list = $("auditsList"); if (!list) return;
+        var items = j.items || [];
+        if (!items.length) { list.innerHTML = "<div class='muted' style='margin-top:6px'>No audits yet.</div>"; return; }
+        items.sort(function(a,b){ return String(b.started_at||b.created_at||"").localeCompare(String(a.started_at||a.created_at||"")); });
+        list.innerHTML = items.map(function(a){
+          var score = (a.overall_score != null ? (" – " + a.overall_score + "%") : "");
+          var status = (a.status ? (" [" + a.status + "]") : "");
+          var t = toLocalTime(a.started_at || a.created_at || "");
+          var d = toLocalDate(a.started_at || a.created_at || "");
+          var when = (t && d) ? (t + " · " + d) : (a.started_at || a.created_at || "");
+          return "<div style='margin:6px 0;display:flex;gap:8px;align-items:center'>" +
+                 "<button class='small secondary aud-open' data-id='"+a.id+"'>Open</button>" +
+                 "<strong>"+esc(a.name)+"</strong>" +
+                 "<span class='muted'>"+esc(when)+score+status+"</span>" +
+                 "</div>";
+        }).join("");
+        list.querySelectorAll(".aud-open").forEach(function(b){
+          b.onclick = function(){ openAudit(parseInt(b.getAttribute("data-id"),10)); };
+        });
+      })
+      .catch(function(e){ setAuditorMsg("error", e.message); });
+  }
+  function openAudit(id){
+    fetch(API + "/env/audits/" + id, { headers: auth() })
+      .then(mustJson).then(handle)
+      .then(function(resp){
+        AUD.currentAudit = resp.audit || resp;
+        try{ localStorage.setItem("ernos_current_audit_id", String(AUD.currentAudit.id)); }catch(_){}
+        AUD.byLoc = {};
+        Object.keys(resp.responses || {}).forEach(function(alid){
+          var arr = resp.responses[alid] || [];
+          AUD.byLoc[alid] = {};
+          arr.forEach(function(r){ AUD.byLoc[alid][r.question_id] = { answer:r.answer||"", comment:r.comment||"" }; });
+        });
+        AUD.currentLocId = null;
+        renderAuditWork(resp.locations || []);
+        setAuditorMsg("ok","Audit opened.");
+      })
+      .catch(function(e){ setAuditorMsg("error", e.message); });
+  }
+  function ensureAuditStyles(){ /* keep top-of-file green/red styles — no overrides */ }
+  function setEnvTapMsg(cls, txt){ var el=$("envTapMsg"); if(!el) return; el.className=(cls==="error"?"error":(cls==="ok"?"ok":"muted")); el.textContent=txt; }
+  function setEnvLocMsg(cls, txt){ var el=$("envLocMsg"); if(!el) return; el.className=(cls==="error"?"error":(cls==="ok"?"ok":"muted")); el.textContent=txt; }
+  function normalizeToken(raw){
+    var t = String(raw||"").trim();
+    try{ t = decodeURIComponent(t); }catch(_){}
+    if (t.startsWith("#")) t = t.slice(1);
+    if (/^https?:\/\//i.test(t)) { var parts=t.split("#"); t = parts[1] || t.split("/").pop(); }
+    if (/^ci\//i.test(t)) t = t.slice(3);
+    if (/^reception\//i.test(t)) t = t.slice(10);
+    if (/^env\//i.test(t)) t = t.slice(4);
+    if (t.indexOf("/") >= 0) t = t.split("/").pop();
+    return t;
+  }
+  function renderAuditWork(locations){
+    ensureAuditStyles();
+    var wrap = $("auditWork"); if (!wrap) return;
+    var a = AUD.currentAudit; if (!a) { wrap.innerHTML = ""; return; }
+
+    var locRows = (locations || []);
+    var locSummaryHtml = locRows.length
+      ? ("<table style='width:100%'><thead><tr><th>Location</th><th>Yes</th><th>Total</th><th>Score</th><th>Action</th></tr></thead><tbody>" +
+          locRows.map(function(l){
+            var sc = (l.score != null ? (l.score + "%") : "");
+            return "<tr><td>"+esc(l.location_name || ("Loc #"+(l.location_id||"")))+"</td>"+
+                   "<td>"+(l.yes_count||0)+"</td>"+
+                   "<td>"+(l.total||0)+"</td>"+
+                   "<td>"+esc(sc)+"</td>"+
+                   "<td><button class='small secondary sel' data-id='"+l.id+"'>Select</button></td></tr>";
+          }).join("") + "</tbody></table>")
+      : "<div class='muted'>No locations in this audit yet.</div>";
+
+    var startedTime = toLocalTime(a.started_at || a.created_at || "");
+    var startedDate = toLocalDate(a.started_at || a.created_at || "");
+
+    var html =
+      "<div class='row' style='align-items:center'>" +
+      "<h4 style='margin:0'>"+esc(a.name || ("Audit #"+a.id))+"</h4>" +
+      "<span class='muted' style='margin-left:8px'>Started: "+esc(startedTime)+" · "+esc(startedDate)+"</span>" +
+      "<span style='margin-left:auto'></span>" +
+      "<button id='btnCsvAudit' class='small secondary'>Audit CSV</button>" +
+      "<button id='btnSubmitAudit' class='small'>Submit Audit</button>" +
+      "</div>" +
+      "<div class='row' style='gap:12px;margin-top:8px'>" +
+      "<div class='col' style='min-width:280px'>" +
+      "<label>QR token (from a Location QR / Tap URL)</label>" +
+      "<input id='envQrToken' placeholder='Paste token or full Tap URL'>" +
+      "<div class='row' style='justify-content:flex-end;margin-top:8px'><button id='btnAddLocViaQR'>Add location via QR</button></div>" +
+      "<div id='envTapMsg' class='muted' style='margin-top:6px'></div>" +
+      "<div style='margin-top:16px'><h4 style='margin:0'>Locations in audit</h4>"+locSummaryHtml+"</div>" +
+      "</div>" +
+      "<div class='col' id='envQuestionsPane' style='min-width:320px'><div class='muted'>Select a location to answer questions.</div></div>" +
+      "</div>";
+
+    wrap.innerHTML = html;
+ // CSV download for this audit
+var btnCsv = wrap.querySelector("#btnCsvAudit");
+if (btnCsv) btnCsv.onclick = function(){
+  dlCsv("/env/audits/" + a.id + "/csv", "audit_" + a.id + ".csv");
+};
+
+    var btnAdd = wrap.querySelector("#btnAddLocViaQR");
+    if (btnAdd) btnAdd.onclick = function(){
+      var raw = ($("envQrToken").value || "").trim();
+      if (!raw) { setEnvTapMsg("error","Provide a token or Tap URL."); return; }
+      var tok = normalizeToken(raw);
+      fetch((API || computeApi()) + "/env/tap", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, auth()),
+        body: JSON.stringify({ token: tok, auditId: a.id })
+      })
+      .then(mustJson).then(handle)
+      .then(function(r){
+        setEnvTapMsg("ok","Added: " + (r.locationName || ("Loc #"+r.locationId)));
+        openAudit(a.id);
+      })
+      .catch(function(e){ setEnvTapMsg("error", e.message); });
+    };
+
+    var btnSubmit = wrap.querySelector("#btnSubmitAudit");
+    if (btnSubmit) btnSubmit.onclick = function(){
+      if (!confirm("Submit this audit now?")) return;
+      fetch((API || computeApi()) + "/env/submit", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, auth()),
+        body: JSON.stringify({ auditId: a.id })
+      })
+      .then(mustJson).then(handle)
+      .then(function(r){
+        setAuditorMsg("ok","Submitted. Overall score: " + (r.overall != null ? (r.overall + "%") : "n/a"));
+        listAudits();
+      })
+      .catch(function(e){ setAuditorMsg("error", e.message); });
+    };
+
+    wrap.querySelectorAll(".sel").forEach(function(btn){
+      btn.onclick = function(){
+        AUD.currentLocId = btn.getAttribute("data-id");
+        renderQuestionsForCurrentLocation(locations);
+      };
+    });
+  }
+
+  function renderQuestionsForCurrentLocation(locations){
+    var pane = $("envQuestionsPane"); if (!pane) return;
+    var alid = AUD.currentLocId;
+    if (!alid) { pane.innerHTML = "<div class='muted'>Select a location to start.</div>"; return; }
+    var loc = (locations || []).find(function(l){ return String(l.id) === String(alid); });
+    if (!loc) { pane.innerHTML = "<div class='muted'>Unknown location.</div>"; return; }
+
+    var grouped = AUD.grouped || {};
+    var html = "<h4 style='margin:0'>"+esc(loc.location_name || ("Loc #"+loc.location_id))+"</h4>" +
+               "<div class='muted' style='margin-bottom:6px'>Choose Yes / No / Other and add optional comment.</div>";
+
+    Object.keys(grouped).forEach(function(section){
+      html += "<div style='margin-top:10px'><h4 style='margin:0'>"+esc(section)+"</h4>";
+      grouped[section].forEach(function(q){
+        var rowId = "q_" + alid + "_" + q.id;
+        var old = (AUD.byLoc[alid] || {})[q.id] || {};
+        var ansUpper = String(old.answer || "").toUpperCase();
+        var selYes = (ansUpper === "YES") ? " selected" : "";
+        var selNo = (ansUpper === "NO") ? " selected" : "";
+        var selOther = (ansUpper === "OTHER") ? " selected" : "";
+
+        html += "<div class='row' style='gap:8px;align-items:center;margin:6px 0'>" +
+                "<div class='col' style='flex:3;min-width:300px'>"+esc(q.text)+"</div>" +
+                "<div class='col' style='flex:2;min-width:220px'>" +
+                  "<div class='row' style='gap:6px'>" +
+                  "<button class='small ans"+selYes+"' data-q='"+q.id+"' data-a='Yes'>Yes</button>" +
+                  "<button class='small ans"+selNo+"' data-q='"+q.id+"' data-a='No'>No</button>" +
+                  "<button class='small ans"+selOther+"' data-q='"+q.id+"' data-a='Other'>Other</button>" +
+                  "</div>" +
+                "</div>" +
+                "<div class='col' style='flex:5;min-width:260px'>" +
+                  "<input class='cmt' id='"+rowId+"_c' placeholder='Comment (optional)' value='"+esc(old.comment || "")+"'>" +
+                "</div>" +
+               "</div>";
+      });
+      html += "</div>";
+    });
+    html += "<div id='envLocMsg' class='muted' style='margin-top:8px'></div>";
+    pane.innerHTML = html;
+
+    pane.querySelectorAll("button.ans").forEach(function (btn) {
+      btn.onclick = function () {
+        var qid = parseInt(btn.getAttribute("data-q"), 10);
+        var ans = btn.getAttribute("data-a");
+        var cEl = document.getElementById("q_" + alid + "_" + qid + "_c");
+        var cmt = cEl ? (cEl.value || "") : "";
+        pane.querySelectorAll('button.ans[data-q="' + qid + '"]').forEach(function (b) { b.classList.remove("selected"); });
+        btn.classList.add("selected");
+        saveAnswer(alid, qid, ans, cmt);
+      };
+    });
+  }
+
+  function saveAnswer(auditLocId, questionId, answer, comment){
+    fetch((API || computeApi()) + "/env/answer", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, auth()),
+      body: JSON.stringify({ auditLocId, questionId, answer, comment: comment || "" })
+    })
+    .then(mustJson).then(handle)
+    .then(function(){ setEnvLocMsg("ok","Saved."); })
+    .catch(function(e){ setEnvLocMsg("error", e.message); });
+  }
+ // Mount auditor UI: loads questions/list and wires the "Start New Audit" button
+function mountAuditor(){
+  try{
+    // Button: Start New Audit
+    var btn = $("btnNewAudit");
+    if (btn && !btn.__bound){
+      btn.__bound = true; // avoid double binding
+      btn.onclick = function(){
+        var name = "Audit " + new Date().toISOString().slice(0,10);
+        fetch((API || computeApi()) + "/env/audits", {
+          method: "POST",
+          headers: Object.assign({"Content-Type":"application/json"}, auth()),
+          body: JSON.stringify({ name: name })
+        })
+        .then(mustJson).then(handle)
+        .then(function(r){
+          // remember current audit id (used by /tap/env)
+          try{ localStorage.setItem("ernos_current_audit_id", String(r.id)); }catch(_){}
+          // open the mobile-friendly runner (YES=green, NO=red, sticky submit)
+          location.href = "/audit/" + r.id;
+        })
+        .catch(function(e){ setAuditorMsg("error", e.message); });
+      };
+    }
+
+    // Load questions + list existing audits (shows “Loading…” until this runs)
+    loadEnvQuestions()
+      .then(listAudits)
+      .then(function(){ setAuditorMsg("muted","Ready."); })
+      .catch(function(e){ setAuditorMsg("error", e.message); });
+  }catch(e){
+    try{ setAuditorMsg("error", e.message || String(e)); }catch(_){}
+  }
+}
+// also export on window in case anything calls it globally
+window.mountAuditor = window.mountAuditor || mountAuditor;
+
+  // ---------- Locations & Staff ----------
+  function loadLocations(){
+    return fetch(API + "/locations", { headers: auth() })
+      .then(mustJson).then(handle)
+      .then(function(j){
+        var items = j.items || [];
+
+        var locSel = $("locSelect");
+        if (locSel) {
+          locSel.innerHTML = "";
+          items.forEach(function(x){
+            var o = document.createElement("option");
+            o.value = String(x.id);
+            o.textContent = String(x.name || "") + (x.type ? (" (" + String(x.type) + ")") : "");
+            locSel.appendChild(o);
+          });
+        }
+
+        var qrSel = $("qrLocSelect");
+        if (qrSel) {
+          qrSel.innerHTML = "";
+          var empty = document.createElement("option");
+          empty.value = ""; empty.textContent = "";
+          qrSel.appendChild(empty);
+          items.forEach(function(x){
+            var o = document.createElement("option");
+            o.value = String(x.id);
+            o.textContent = String(x.name || "") + " (" + String(x.type || "") + ")";
+            qrSel.appendChild(o);
+          });
+        }
+
+        var tb = $("locBody");
+        if (!tb) return;
+        tb.innerHTML = "";
+        items.forEach(function(x){
+          var tr = document.createElement("tr");
+          function td(text){ var el=document.createElement("td"); el.textContent = text; return el; }
+          tr.appendChild(td(String(x.name || "")));
+          tr.appendChild(td(String(x.type || "")));
+          tr.appendChild(td(x.active ? "Yes" : "No"));
+
+          var tdActions = document.createElement("td");
+          var btnT = document.createElement("button");
+          btnT.className = "small t"; btnT.textContent = "Toggle";
+          btnT.onclick = function(){
+            fetch(API + "/locations/" + x.id, {
+              method: "PATCH",
+              headers: Object.assign({ "Content-Type": "application/json" }, auth()),
+              body: JSON.stringify({ active: x.active ? 0 : 1 })
+            })
+            .then(mustJson).then(handle).then(loadLocations)
+            .catch(function(e){ showMsg("locMsg","error", e.message); });
+          };
+
+          var btnD = document.createElement("button");
+          btnD.className = "small d"; btnD.textContent = "Delete";
+          btnD.onclick = function(){
+            if (!confirm('Delete "' + (x.name || "") + '"? (deletes its QR too)')) return;
+            fetch(API + "/locations/" + x.id, { method: "DELETE", headers: auth() })
+              .then(mustJson).then(handle).then(loadLocations)
+              .catch(function(e){ showMsg("locMsg","error", e.message); });
+          };
+
+          tdActions.appendChild(btnT);
+          tdActions.appendChild(document.createTextNode(" "));
+          tdActions.appendChild(btnD);
+          tr.appendChild(tdActions);
+          tb.appendChild(tr);
+        });
+initFridgesFromLocations(items);
+      return items;
+      })
+      .catch(function(e){ showMsg("locMsg","error", e.message); });
+  }
+// --- Admin: Add location ---
+var _btnAddLoc = document.getElementById("btnAddLoc");
+if (_btnAddLoc && !_btnAddLoc.__bound) {
+  _btnAddLoc.__bound = true;
+  _btnAddLoc.onclick = function () {
+    try {
+      API = computeApi();
+      var name = (document.getElementById("newLocName").value || "").trim();
+      var type = (document.getElementById("newLocType").value || "").trim().toUpperCase(); // e.g., FRIDGE
+
+      if (!name) { showMsg("locMsg","error","Enter a location name."); return; }
+      if (!type) { showMsg("locMsg","error","Pick a location type."); return; }
+
+      fetch(API + "/locations", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type":"application/json" }, auth()),
+        body: JSON.stringify({ name: name, type: type, active: 1 })
+      })
+      .then(mustJson).then(handle)
+      .then(function(){
+        document.getElementById("newLocName").value = "";
+        showMsg("locMsg","ok","Location added.");
+        return loadLocations(); // refresh selects & table
+      })
+      .catch(function(e){ showMsg("locMsg","error", e.message); });
+    } catch (e) {
+      showMsg("locMsg","error", e && e.message ? e.message : "Failed to add location");
+    }
+  };
+}
+
+function loadStaff(){
+  return fetch(API + "/users", { headers: auth() })
+    .then(mustJson).then(handle)
+    .then(function(j){
+      const tb = $("staffBody"); if (!tb) return;
+      tb.innerHTML = "";
+      (j.items || []).forEach(function(u){
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>"+esc(u.name||"")+"</td>"+
+          "<td>"+esc(u.email||"")+"</td>"+
+          "<td>"+esc(u.role||"")+"</td>"+
+          "<td>"+esc(u.category||"")+"</td>"+
+          "<td>"+esc(u.title||"")+"</td>"+
+          "<td><button class='small secondary e'>Edit</button> <button class='small d'>Delete</button></td>";
+        tb.appendChild(tr);
+
+        // ---- Edit ----
+        const btnE = tr.querySelector("button.e");
+        if (btnE) btnE.onclick = function(){
+          var name = prompt("Name", u.name||""); if (name==null) return;
+          var role = prompt("Role (USER/ADMIN/ADMIN_GLOBAL)", u.role||""); if (role==null) return;
+          var category = prompt("Category (NURSING/HOUSEKEEPING/RECEPTION/AUDITOR/MAINTENANCE)", u.category||""); if (category==null) return;
+          var title = prompt("Title", u.title||""); if (title==null) return;
+
+          fetch(API + "/users/" + u.id, {
+            method: "PATCH",
+            headers: Object.assign({"Content-Type":"application/json"}, auth()),
+            body: JSON.stringify({ name: name, role: role, category: category, title: title })
+          })
+          .then(mustJson).then(handle)
+          .then(function(){ showMsg("staffMsg","ok","Updated."); return loadStaff(); })
+          .catch(function(e){ showMsg("staffMsg","error", e.message); });
+        };
+
+        // ---- Delete ----
+        const btnD = tr.querySelector("button.d");
+        if (btnD) btnD.onclick = function(){
+          if (!confirm('Delete "' + (u.name || u.email || "user") + '"?')) return;
+
+          // Primary: modern DELETE
+          fetch(API + "/users/" + u.id, { method: "DELETE", headers: auth() })
+            .then(mustJson).then(handle)
+            .then(function(){ showMsg("staffMsg","ok","Deleted."); return loadStaff(); })
+            .catch(function(e1){
+              // Fallback: legacy POST alias
+              fetch(API + "/users/delete", {
+                method: "POST",
+                headers: Object.assign({"Content-Type":"application/json"}, auth()),
+                body: JSON.stringify({ id: u.id })
+              })
+              .then(mustJson).then(handle)
+              .then(function(){ showMsg("staffMsg","ok","Deleted."); return loadStaff(); })
+              .catch(function(e2){ showMsg("staffMsg","error", e2.message || e1.message); });
+            });
+        };
+      });
+    })
+    .catch(function(e){ showMsg("staffMsg","error", e.message); });
+}
+
+
+  // ---------- INIT ----------
+  document.addEventListener("DOMContentLoaded", function(){
+try { history.replaceState({view:"login"}, "", "#login"); } catch(_){}
+    var p = new URLSearchParams(location.search);
+
+    // Persist ?api=...
+    try{
+      var apiFromQuery = (p.get("api") || "").trim();
+      if (apiFromQuery) localStorage.setItem("ernosApi", apiFromQuery.replace(/\/+$/,''));
+    }catch(_){}
+
+    // Service worker (?nosw=1 disables)
+    if ("serviceWorker" in navigator) {
+      if (p.get("nosw") === "1") {
+        try {
+          navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
+        } catch(_){}
+      } else {
+        navigator.serviceWorker.register("/sw.js?v=3");
+      }
+    }
+
+    API = computeApi();
+    showMsg("loginBox","muted","Using API: " + API);
+
+    // CSV buttons
+    bindCsvButton("btnVisitorsCsv", "/visitors?csv=1", "visitors.csv");
+    bindCsvButton("btnCsvN", "/checkins?csv=1&category=NURSING", "nursing_checkins.csv");
+    bindCsvButton("btnCsvHK", "/checkins?csv=1&category=HOUSEKEEPING", "housekeeping_checkins.csv");
+    bindCsvButton("btnCsvIssues", "/issues?csv=1", "issues.csv");
+
+    var savedToken = localStorage.getItem("ernosToken");
+    if (savedToken) {
+      token = savedToken;
+      fetch(API + "/me", { headers: auth(), cache: "no-store" })
+        .then(mustJson).then(handle)
+        .then(function (u) {
+          ME = u;
+          $("btnLogout").style.display = "";
+          $("viewLogin").style.display = "none";
+          $("viewApp").style.display = "";
+ try { history.replaceState({view:"login"}, "", "#login"); history.pushState({view:"app"}, "", "#app"); } catch(_){}
+
+          updateMeBadge();
+          applyCategoryVisibility();
+          // NEW: ensure role option appears on warm start too
+          maybeUnlockRootRole();
+
+          var bootPromises = [];
+          if (!isSuperAdmin() || (ME && ME.tenant_id)){
+            bootPromises = [loadLocations(), loadStaff()];
+          } else {
+            bootPromises = [loadTenants()];
+          }
+
+          Promise.all(bootPromises).then(function () {
+            if (!isSuperAdmin() || (ME && ME.tenant_id)){
+              refreshOpen();
+              refreshVisitors();
+              refreshIssues();
+              refreshAlerts();
+              startEvents();
+
+              if (_alertsTimer) clearInterval(_alertsTimer);
+              _alertsTimer = setInterval(function(){ refreshAlerts(); refreshIssues(); }, 60000);
+            }
+  // INSERT THIS:
+  loadConfig().then(function(){
+    bindFridgeUi();
+    loadFridgeLogs();
+  });
+
+  window.__ERNOS_API__ = API;
+
+            window.__ERNOS_API__ = API;
+            window.__ERNOS_TOKEN__ = token;
+            window.__ERNOS_ME__ = ME;
+            mountAuditor();
+          });
+        })
+        .catch(function(){ $("viewLogin").style.display = ""; });
+    } else {
+      $("viewLogin").style.display = "";
+    }
+  }); // end DOMContentLoaded
+// === Browser back/forward navigation (Login/App views) ===
+// Place this outside any function, near the bottom of the script.
+window.addEventListener("popstate", function () {
+  var v = (history.state && history.state.view) || "login";
+  if (v === "app") {
+    // show app, hide login
+    var va = document.getElementById("viewApp");
+    var vl = document.getElementById("viewLogin");
+    if (va) va.style.display = "";
+    if (vl) vl.style.display = "none";
+  } else {
+    // show login, hide app
+    var va2 = document.getElementById("viewApp");
+    var vl2 = document.getElementById("viewLogin");
+    if (va2) va2.style.display = "none";
+    if (vl2) vl2.style.display = "";
+  }
+});
+
+})(); 
+</script>
