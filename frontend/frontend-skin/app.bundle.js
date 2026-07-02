@@ -1,5 +1,13 @@
 /* Ernos Zdravstvena Njega loader */
 (function(){
-  document.write('<scr'+'ipt src="/app.bundle.legacy.js?v=20260702-6"><\\/scr'+'ipt>');
-  document.write('<scr'+'ipt src="/hr-rebrand.js?v=20260702-6"><\\/scr'+'ipt>');
+  function add(src, cb){
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = false;
+    s.onload = function(){ if (cb) cb(); };
+    document.head.appendChild(s);
+  }
+  add('/app.bundle.legacy.js?v=20260702-8', function(){
+    add('/hr-rebrand.js?v=20260702-8');
+  });
 })();
