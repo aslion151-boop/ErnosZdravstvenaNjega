@@ -1,6 +1,5 @@
 /* Ernos Zdravstvena Njega - Croatian UI cleanup */
 (() => {
-  if (window.__ERNOS_ZNJ_UI__) return;
   window.__ERNOS_ZNJ_UI__ = true;
 
   const BRAND = 'Ernos Zdravstvena Njega';
@@ -21,17 +20,21 @@
     ['Staff & Roles', 'Djelatnici i uloge'],
     ['Staff', 'Djelatnici'],
     ['Users', 'Korisnici'],
+    ['User', 'Korisnik'],
     ['Settings', 'Administracija'],
     ['Reports', 'Izvještaji'],
     ['Locations', 'Lokacije'],
+    ['Location', 'Lokacija'],
     ['QR Codes', 'QR/NFC kodovi'],
     ['Check-in', 'Početak njege'],
     ['Check-out', 'Završetak njege'],
     ['Login', 'Prijava'],
+    ['Log in', 'Prijava'],
     ['Log out', 'Odjava'],
     ['Logout', 'Odjava'],
     ['Username', 'Korisničko ime'],
     ['Password', 'Lozinka'],
+    ['Remember me', 'Zapamti me'],
     ['Save', 'Spremi'],
     ['Cancel', 'Odustani'],
     ['Delete', 'Obriši'],
@@ -54,28 +57,32 @@
     return (location.hash || '#dashboard').split('?')[0] || '#dashboard';
   }
 
-  function esc(v) {
-    return String(v ?? '').replace(/[&<>'"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[s]));
-  }
-
   function translateText(s) {
     let out = String(s ?? '');
     for (const [from, to] of replacements) out = out.split(from).join(to);
     return out;
   }
 
+  function routeTitle() {
+    const r = route();
+    if (r === '#patients') return 'Pacijenti';
+    if (r === '#staff') return 'Djelatnici';
+    if (r === '#settings') return 'Administracija';
+    return 'Nadzorna ploča';
+  }
+
   function setHeader(title) {
     document.documentElement.lang = 'hr';
-    document.title = title ? `${BRAND} - ${title}` : BRAND;
+    document.title = `${BRAND} - ${title || routeTitle()}`;
     const t = document.querySelector('title');
     if (t) t.textContent = document.title;
     const c = document.querySelector('#crumbs');
-    if (c) c.textContent = title || 'Nadzorna ploča';
+    if (c) c.textContent = title || routeTitle();
     const logo = document.querySelector('.brand img');
     if (logo) logo.alt = BRAND;
   }
 
-  function renderNav() {
+  function applyNav() {
     const nav = document.querySelector('#nav');
     if (!nav) return;
     const r = route();
@@ -84,14 +91,23 @@
     ).join('');
   }
 
+  try {
+    window.renderNav = applyNav;
+    window.preferredHome = () => '#dashboard';
+  } catch (_) {}
+
   function translateVisibleText() {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    const root = document.body;
+    if (!root) return;
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const p = node.parentElement;
         if (!p || ['SCRIPT','STYLE','NOSCRIPT'].includes(p.tagName)) return NodeFilter.FILTER_REJECT;
         return node.nodeValue && node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
       }
     });
+
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     for (const n of nodes) {
@@ -147,7 +163,7 @@
     const view = document.querySelector('#view');
     if (!view) return;
 
-    const oldWords = ['Visitors','Residents Out','Fridge','Fire','Maintenance','Housekeeping','Environmental','Nursing Checks','Nursing Alerts','Family Touchpoint','Reception','Audit','Issues'];
+    const oldWords = ['Visitors','Residents Out','Fridge','Fire','Maintenance','Housekeeping','Environmental','Nursing Checks','Nursing Alerts','Family Touchpoint','Reception','Audit','Issues','QR Codes','Locations'];
     for (const card of Array.from(view.querySelectorAll('.card, [data-kpi]'))) {
       const text = card.textContent || '';
       if (oldWords.some(w => text.includes(w))) card.style.display = 'none';
@@ -163,13 +179,12 @@
   }
 
   function run() {
-    renderNav();
+    applyNav();
     const r = route();
     if (r === '#patients') renderPatientsPage();
     else {
-      if (r === '#dashboard') cleanDashboard();
-      else if (r === '#staff') setHeader('Djelatnici');
-      else if (r === '#settings') setHeader('Administracija');
+      setHeader(routeTitle());
+      cleanDashboard();
       translateVisibleText();
     }
     const logout = document.querySelector('#logoutBtn');
@@ -184,6 +199,7 @@
   document.addEventListener('DOMContentLoaded', () => later(0));
   window.addEventListener('load', () => later(100));
   window.addEventListener('hashchange', () => later(50));
-  setInterval(run, 1500);
+  setInterval(run, 600);
   try { new MutationObserver(() => later()).observe(document.documentElement, {childList:true, subtree:true}); } catch (_) {}
+  later(0);
 })();
