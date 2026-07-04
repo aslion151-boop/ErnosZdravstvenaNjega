@@ -1,11 +1,7 @@
 /* Ernos Zdravstvena Njega - stable standalone frontend */
 (function () {
   var BRAND = 'Ernos Zdravstvena Njega';
-  var state = {
-    api: location.origin,
-    token: '',
-    me: null
-  };
+  var state = { api: location.origin, token: '', me: null };
   window.state = state;
 
   function $(sel) { return document.querySelector(sel); }
@@ -50,10 +46,7 @@
         var json = null;
         try { json = text ? JSON.parse(text) : null; } catch (e) {}
         if (!res.ok) {
-          if (res.status === 401) {
-            setToken('', false);
-            state.me = null;
-          }
+          if (res.status === 401) { setToken('', false); state.me = null; }
           throw new Error((json && (json.error || json.detail || json.message)) || text || ('HTTP ' + res.status));
         }
         return json || {};
@@ -66,9 +59,15 @@
     return h || '#dashboard';
   }
 
+  function params() {
+    var raw = (location.hash.split('?')[1] || '');
+    return new URLSearchParams(raw);
+  }
+
   function routeTitle(r) {
     r = r || route();
     if (r === '#patients') return 'Pacijenti';
+    if (r === '#patient') return 'Profil pacijenta';
     if (r === '#staff') return 'Djelatnici';
     if (r === '#settings') return 'Administracija';
     if (r === '#login') return 'Prijava';
@@ -89,7 +88,7 @@
     var logo = document.querySelector('.brand img');
     if (logo) logo.alt = BRAND;
     var fallback = document.querySelector('.brand-fallback');
-    if (fallback) fallback.textContent = BRAND;
+    if (fallback) fallback.textContent = 'E';
     var logout = $('#logoutBtn');
     if (logout) logout.textContent = 'Odjava';
   }
@@ -97,10 +96,7 @@
   function renderUserBadge() {
     var b = $('#userBadge');
     if (!b) return;
-    if (!state.me) {
-      b.innerHTML = '';
-      return;
-    }
+    if (!state.me) { b.innerHTML = ''; return; }
     var name = state.me.name || state.me.username || 'Korisnik';
     var role = state.me.role || '';
     var site = state.me.tenant_name || state.me.site || '';
@@ -114,10 +110,7 @@
   function renderNav() {
     var nav = $('#nav');
     if (!nav) return;
-    if (!state.token) {
-      nav.innerHTML = '<a href="#login" class="active">Prijava</a>';
-      return;
-    }
+    if (!state.token) { nav.innerHTML = '<a href="#login" class="active">Prijava</a>'; return; }
     var r = route();
     var items = [
       ['#dashboard', 'Nadzorna ploča'],
@@ -127,21 +120,12 @@
     ];
     var html = '';
     for (var i = 0; i < items.length; i++) {
-      html += '<a href="' + items[i][0] + '" class="' + (r === items[i][0] ? 'active' : '') + '">' + items[i][1] + '</a>';
+      var active = (r === items[i][0] || (r === '#patient' && items[i][0] === '#patients')) ? 'active' : '';
+      html += '<a href="' + items[i][0] + '" class="' + active + '">' + items[i][1] + '</a>';
     }
     nav.innerHTML = html;
   }
   window.renderNav = renderNav;
-
-  function msg(text, type) {
-    var view = $('#view');
-    if (!view) return;
-    var d = document.createElement('div');
-    d.className = 'alert ' + (type || '');
-    d.textContent = text;
-    view.insertBefore(d, view.firstChild);
-    setTimeout(function () { try { d.remove(); } catch (e) {} }, 3500);
-  }
 
   function viewLogin() {
     setCrumbs('Prijava');
@@ -188,10 +172,7 @@
     var view = $('#view');
     if (!view) return;
     view.innerHTML = '' +
-      '<div class="card">' +
-        '<h2>' + BRAND + '</h2>' +
-        '<p class="muted">Stabilna radna verzija za zdravstvenu njegu u kući.</p>' +
-      '</div>' +
+      '<div class="card"><h2>' + BRAND + '</h2><p class="muted">Stabilna radna verzija za zdravstvenu njegu u kući.</p></div>' +
       '<div class="grid cols-3">' +
         '<div class="card"><h3>Pacijenti</h3><p>Osnovna evidencija pacijenata.</p><a class="btn" href="#patients">Otvori pacijente</a></div>' +
         '<div class="card"><h3>Posjete</h3><p class="muted">Sljedeći korak: početak i završetak njege preko QR/NFC.</p></div>' +
@@ -199,17 +180,19 @@
       '</div>';
   }
 
+  function patientFullName(p) { return String((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
+
   function patientRow(p) {
-    var full = String((p.first_name || '') + ' ' + (p.last_name || '')).trim();
+    var full = patientFullName(p);
     var dob = p.date_of_birth ? String(p.date_of_birth).slice(0, 10) : '';
     return '' +
       '<tr>' +
-        '<td>' + esc(full) + '</td>' +
+        '<td><strong>' + esc(full) + '</strong></td>' +
         '<td>' + esc(dob) + '</td>' +
         '<td>' + esc(p.address || '') + '</td>' +
         '<td>' + esc(p.phone || '') + '</td>' +
         '<td>' + esc(p.family_contact_name || '') + '<br><span class="muted">' + esc(p.family_contact_phone || '') + '</span></td>' +
-        '<td><button class="btn ghost small" data-delete-patient="' + esc(p.id) + '" type="button">Deaktiviraj</button></td>' +
+        '<td style="white-space:nowrap"><a class="btn small" href="#patient?id=' + esc(p.id) + '">Profil</a> <button class="btn ghost small" data-delete-patient="' + esc(p.id) + '" type="button">Deaktiviraj</button></td>' +
       '</tr>';
   }
 
@@ -219,19 +202,14 @@
     wrap.innerHTML = '<div class="empty">Učitavanje...</div>';
     api('/api/patients').then(function (data) {
       var items = data.items || [];
-      if (!items.length) {
-        wrap.innerHTML = '<div class="empty">Još nema pacijenata.</div>';
-        return;
-      }
+      if (!items.length) { wrap.innerHTML = '<div class="empty">Još nema pacijenata.</div>'; return; }
       var rows = '';
       for (var i = 0; i < items.length; i++) rows += patientRow(items[i]);
       wrap.innerHTML = '' +
-        '<div class="table-wrap pretty">' +
-          '<table class="table pretty">' +
-            '<thead><tr><th>Pacijent</th><th>Rođen</th><th>Adresa</th><th>Telefon</th><th>Obitelj</th><th></th></tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-          '</table>' +
-        '</div>';
+        '<div class="table-wrap pretty"><table class="table pretty">' +
+          '<thead><tr><th>Pacijent</th><th>Rođen</th><th>Adresa</th><th>Telefon</th><th>Obitelj</th><th>Radnje</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table></div>';
     }).catch(function (err) {
       wrap.innerHTML = '<div class="alert err">Greška: ' + esc(err.message || err) + '</div>';
     });
@@ -242,12 +220,8 @@
     var view = $('#view');
     if (!view) return;
     view.innerHTML = '' +
-      '<div class="card">' +
-        '<h2>Pacijenti</h2>' +
-        '<p class="muted">Osnovna evidencija pacijenata za zdravstvenu njegu u kući.</p>' +
-      '</div>' +
-      '<div class="card">' +
-        '<h3>Dodaj pacijenta</h3>' +
+      '<div class="card"><h2>Pacijenti</h2><p class="muted">Osnovna evidencija pacijenata za zdravstvenu njegu u kući.</p></div>' +
+      '<div class="card"><h3>Dodaj pacijenta</h3>' +
         '<form id="patientForm" class="grid cols-3" autocomplete="off">' +
           '<div><label>Ime</label><input name="first_name" required></div>' +
           '<div><label>Prezime</label><input name="last_name" required></div>' +
@@ -257,17 +231,9 @@
           '<div><label>Kontakt obitelji</label><input name="family_contact_name"></div>' +
           '<div><label>Telefon obitelji</label><input name="family_contact_phone"></div>' +
           '<div style="grid-column:1/-1"><label>Napomena</label><textarea name="notes" rows="3"></textarea></div>' +
-          '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-            '<button class="btn" type="submit">Spremi pacijenta</button>' +
-            '<button class="btn ghost" type="button" id="refreshPatients">Osvježi</button>' +
-            '<span id="patientMsg" class="muted"></span>' +
-          '</div>' +
-        '</form>' +
-      '</div>' +
-      '<div class="card">' +
-        '<h3>Popis pacijenata</h3>' +
-        '<div id="patientsList"></div>' +
-      '</div>';
+          '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="submit">Spremi pacijenta</button><button class="btn ghost" type="button" id="refreshPatients">Osvježi</button><span id="patientMsg" class="muted"></span></div>' +
+        '</form></div>' +
+      '<div class="card"><h3>Popis pacijenata</h3><div id="patientsList"></div></div>';
 
     var form = $('#patientForm');
     var out = $('#patientMsg');
@@ -308,6 +274,39 @@
     loadPatients();
   }
 
+  function viewPatientProfile() {
+    var id = params().get('id');
+    setCrumbs('Profil pacijenta');
+    var view = $('#view');
+    if (!view) return;
+    if (!id) { view.innerHTML = '<div class="alert err">Nedostaje ID pacijenta.</div>'; return; }
+    view.innerHTML = '<div class="card"><h2>Profil pacijenta</h2><p class="muted">Učitavanje...</p></div>';
+    api('/api/patients').then(function (data) {
+      var items = data.items || [];
+      var p = null;
+      for (var i = 0; i < items.length; i++) { if (String(items[i].id) === String(id)) { p = items[i]; break; } }
+      if (!p) { view.innerHTML = '<div class="alert err">Pacijent nije pronađen.</div><a class="btn ghost" href="#patients">Natrag</a>'; return; }
+      var full = patientFullName(p);
+      var scanLink = location.origin + '/#patient?id=' + encodeURIComponent(p.id);
+      view.innerHTML = '' +
+        '<div class="card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h2>' + esc(full) + '</h2><p class="muted">Profil pacijenta</p></div><a class="btn ghost" href="#patients">Natrag na pacijente</a></div></div>' +
+        '<div class="grid cols-3">' +
+          '<div class="card"><h3>Osnovno</h3><p><strong>Datum rođenja:</strong><br>' + esc(p.date_of_birth ? String(p.date_of_birth).slice(0,10) : '-') + '</p><p><strong>Telefon:</strong><br>' + esc(p.phone || '-') + '</p></div>' +
+          '<div class="card"><h3>Adresa</h3><p>' + esc(p.address || '-') + '</p></div>' +
+          '<div class="card"><h3>Obitelj</h3><p><strong>' + esc(p.family_contact_name || '-') + '</strong><br>' + esc(p.family_contact_phone || '') + '</p></div>' +
+        '</div>' +
+        '<div class="card"><h3>Napomena</h3><p>' + esc(p.notes || 'Nema napomene.') + '</p></div>' +
+        '<div class="card"><h3>QR/NFC link</h3><p class="muted">Za sada je ovo privremeni link na profil. Sljedeći korak je pravi sigurni scan token i početak/završetak njege.</p><input id="scanLink" readonly value="' + esc(scanLink) + '"><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="copyScanLink" type="button">Kopiraj link</button><button class="btn ghost" type="button" disabled>Početak njege - sljedeći korak</button></div></div>';
+      var copy = $('#copyScanLink');
+      if (copy) copy.onclick = function () {
+        var input = $('#scanLink');
+        if (input) { input.select(); document.execCommand('copy'); copy.textContent = 'Kopirano'; setTimeout(function(){ copy.textContent = 'Kopiraj link'; }, 1200); }
+      };
+    }).catch(function (err) {
+      view.innerHTML = '<div class="alert err">Greška: ' + esc(err.message || err) + '</div>';
+    });
+  }
+
   function viewStaff() {
     setCrumbs('Djelatnici');
     var view = $('#view');
@@ -319,9 +318,7 @@
     setCrumbs('Administracija');
     var view = $('#view');
     if (!view) return;
-    view.innerHTML = '' +
-      '<div class="card"><h2>Administracija</h2><p class="muted">Postavke i izvještaji dolaze nakon što stabiliziramo pacijente i QR/NFC posjete.</p></div>' +
-      '<div class="card"><button class="btn ghost" id="logoutInline" type="button">Odjava</button></div>';
+    view.innerHTML = '<div class="card"><h2>Administracija</h2><p class="muted">Postavke i izvještaji dolaze nakon što stabiliziramo pacijente i QR/NFC posjete.</p></div><div class="card"><button class="btn ghost" id="logoutInline" type="button">Odjava</button></div>';
     var b = $('#logoutInline');
     if (b) b.onclick = logout;
   }
@@ -335,14 +332,13 @@
 
   function renderAll() {
     ensureShell();
-    if (!state.token && route() !== '#login') {
-      location.hash = '#login';
-    }
+    if (!state.token && route() !== '#login') { location.hash = '#login'; }
     renderUserBadge();
     renderNav();
     var r = route();
     if (r === '#login') return viewLogin();
     if (r === '#patients') return viewPatients();
+    if (r === '#patient') return viewPatientProfile();
     if (r === '#staff') return viewStaff();
     if (r === '#settings') return viewSettings();
     return viewDashboard();
@@ -362,14 +358,7 @@
       };
     }
     if (state.token) {
-      api('/me').then(function (me) {
-        state.me = me;
-        renderAll();
-      }).catch(function () {
-        setToken('', false);
-        state.me = null;
-        renderAll();
-      });
+      api('/me').then(function (me) { state.me = me; renderAll(); }).catch(function () { setToken('', false); state.me = null; renderAll(); });
     } else {
       renderAll();
     }
