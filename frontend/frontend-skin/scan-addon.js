@@ -1,5 +1,8 @@
 /* Ernos Zdravstvena Njega - QR/NFC scan addon */
 (function(){
+  var pendingProfileId = '';
+  var applyingCard = false;
+
   function $(s){ return document.querySelector(s); }
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]||ch;}); }
   function token(){ try{return (window.state&&window.state.token)||sessionStorage.getItem('ernosToken')||localStorage.getItem('ernosToken')||'';}catch(e){return '';} }
@@ -36,13 +39,14 @@
     return true;
   }
 
-  function findOldQrCard(view){
+  function isQrCard(card){
+    var txt=card.textContent||'';
+    return txt.indexOf('QR/NFC link')>=0 || txt.indexOf('QR/NFC tag')>=0 || txt.indexOf('privremeni link')>=0 || txt.indexOf('Početak njege - sljedeći korak')>=0;
+  }
+
+  function removeQrCards(view){
     var cards=view.querySelectorAll('.card');
-    for(var i=0;i<cards.length;i++){
-      var txt=cards[i].textContent||'';
-      if(txt.indexOf('QR/NFC link')>=0 || txt.indexOf('privremeni link')>=0 || txt.indexOf('Početak njege - sljedeći korak')>=0) return cards[i];
-    }
-    return null;
+    for(var i=cards.length-1;i>=0;i--){ if(isQrCard(cards[i])) cards[i].parentNode.removeChild(cards[i]); }
   }
 
   function enhancePatientProfile(){
@@ -50,17 +54,22 @@
     if(r !== '#patient') return;
     var id=params().get('id'); if(!id) return;
     var view=$('#view'); if(!view) return;
-    var old=findOldQrCard(view);
-    if(!old && $('#realScanCard')) return;
-    if($('#realScanCard')) return;
+    if(applyingCard && pendingProfileId===id) return;
+    if($('#realScanCard') && pendingProfileId===id) return;
+    pendingProfileId=id;
+    applyingCard=true;
     api('/api/care/patients/'+encodeURIComponent(id)+'/code').then(function(data){
+      var current=(location.hash||'').split('?')[0];
+      var currentId=params().get('id')||'';
+      var v=$('#view');
+      if(current !== '#patient' || currentId !== id || !v) return;
       var link=location.origin+(data.url||('/#scan?t='+encodeURIComponent(data.code||'')));
+      removeQrCards(v);
       var card=document.createElement('div'); card.className='card'; card.id='realScanCard';
       card.innerHTML='<h3>QR/NFC tag</h3><p class="muted">Ovo je pravi Ernos workflow: isti link za QR i NFC. Prvi tap = početak njege, drugi tap = završetak njege.</p><input id="realScanLink" readonly value="'+esc(link)+'"><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="copyRealScan" type="button">Kopiraj link</button><a class="btn ghost" href="#scan?t='+encodeURIComponent(data.code||'')+'">Testiraj scan</a></div>';
-      old=findOldQrCard(view);
-      if(old) old.replaceWith(card); else view.appendChild(card);
+      v.appendChild(card);
       var b=$('#copyRealScan'); if(b)b.onclick=function(){var inp=$('#realScanLink'); if(inp){inp.select(); document.execCommand('copy'); b.textContent='Kopirano'; setTimeout(function(){b.textContent='Kopiraj link';},1200);}};
-    }).catch(function(err){ console.warn('[scan-addon] code failed',err); });
+    }).catch(function(err){ console.warn('[scan-addon] code failed',err); }).then(function(){ applyingCard=false; });
   }
 
   var tries=0;
@@ -68,10 +77,10 @@
     if(renderScan()) return;
     enhancePatientProfile();
     tries++;
-    if(tries<30) setTimeout(run,250);
+    if(tries<12) setTimeout(run,300);
   }
-  window.addEventListener('hashchange',function(){ tries=0; setTimeout(run,50); });
+  window.addEventListener('hashchange',function(){ tries=0; pendingProfileId=''; applyingCard=false; setTimeout(run,50); });
   document.addEventListener('DOMContentLoaded',function(){ tries=0; setTimeout(run,150); });
-  try{ new MutationObserver(function(){ if((location.hash||'').indexOf('#patient')===0) setTimeout(enhancePatientProfile,60); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
+  try{ new MutationObserver(function(){ if((location.hash||'').indexOf('#patient')===0) setTimeout(enhancePatientProfile,80); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
   if(document.readyState!=='loading') setTimeout(run,150);
 })();
