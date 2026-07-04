@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const setupHomecareCheckins = require('./homecare_checkins.cjs');
 
 module.exports = function setupFamilyTouchpoint(opts = {}) {
   const { app, pool, auth } = opts;
@@ -30,7 +31,9 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
       CREATE INDEX IF NOT EXISTS idx_patients_tenant_active ON patients(tenant_id, active, last_name, first_name);
     `);
   }
-  ensureTables().catch(e => console.error('[patients] ensureTables failed', e));
+  ensureTables()
+    .then(() => setupHomecareCheckins(opts))
+    .catch(e => console.error('[patients] ensureTables failed', e));
 
   app.get('/api/patients', requireUser, async (req,res)=>{
     try{
