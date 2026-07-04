@@ -6,6 +6,9 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
   if (!app || !pool) return;
   const requireUser = typeof auth === 'function' ? auth : function(_req,_res,next){ next(); };
 
+  // Register QR/NFC home-care routes immediately. The plugin creates/migrates its own tables.
+  setupHomecareCheckins(opts);
+
   function tenantOf(req){ return Number(req?.user?.tenant_id || req?.tenant_id || 1); }
   function userIdOf(req){ return Number(req?.user?.id || req?.user?.user_id || 0) || null; }
   function clean(v, max=500){ return String(v ?? '').trim().slice(0, max); }
@@ -31,9 +34,7 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
       CREATE INDEX IF NOT EXISTS idx_patients_tenant_active ON patients(tenant_id, active, last_name, first_name);
     `);
   }
-  ensureTables()
-    .then(() => setupHomecareCheckins(opts))
-    .catch(e => console.error('[patients] ensureTables failed', e));
+  ensureTables().catch(e => console.error('[patients] ensureTables failed', e));
 
   app.get('/api/patients', requireUser, async (req,res)=>{
     try{
