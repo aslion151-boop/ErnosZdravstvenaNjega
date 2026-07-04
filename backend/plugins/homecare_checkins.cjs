@@ -3,6 +3,8 @@ module.exports = function setupHomecareCheckins(opts = {}) {
   const pool = opts.pool;
   const auth = opts.auth;
   if (!app || !pool) return;
+  if (app.locals.homecareCheckinsLoaded) return;
+  app.locals.homecareCheckinsLoaded = true;
 
   const requireUser = typeof auth === 'function' ? auth : function (_req, _res, next) { next(); };
 
@@ -28,6 +30,22 @@ module.exports = function setupHomecareCheckins(opts = {}) {
 
   async function setup() {
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS patients (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id INT NOT NULL DEFAULT 1,
+        first_name TEXT NOT NULL DEFAULT '',
+        last_name TEXT NOT NULL DEFAULT '',
+        date_of_birth DATE,
+        address TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        family_contact_name TEXT NOT NULL DEFAULT '',
+        family_contact_phone TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS scan_code TEXT;
       CREATE UNIQUE INDEX IF NOT EXISTS ux_patients_scan_code ON patients(scan_code) WHERE scan_code IS NOT NULL;
       CREATE TABLE IF NOT EXISTS care_visits (
