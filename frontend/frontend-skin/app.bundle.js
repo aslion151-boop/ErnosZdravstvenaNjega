@@ -7,7 +7,7 @@
     s.onload = function(){ if (cb) cb(); };
     document.head.appendChild(s);
   }
-  add('/app.bundle.legacy.js?v=20260702-8', function(){
-    add('/hr-rebrand.js?v=20260702-8');
+  add('/app.bundle.legacy.js?v=20260704-1', function(){
+    add('/hr-rebrand.js?v=20260704-1');
   });
 })();
