@@ -42,6 +42,14 @@
     '</div></div>';
   }
 
+  function familyNotifyField(patient){
+    var contact=String(((patient&&patient.family_contact_name)||'')+' '+((patient&&patient.family_contact_phone)||'')).trim();
+    if(!contact) return '';
+    return '<div style="margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff">'+
+      '<label style="display:flex;align-items:flex-start;gap:10px;margin:0;font-weight:750"><input id="notifyFamily" type="checkbox" checked style="width:auto;min-height:0;margin-top:3px"> <span>Pripremi obavijest obitelji<span class="muted" style="display:block;margin-top:4px;font-weight:500">Kontakt: '+esc(contact)+'. Ovo još ne šalje SMS/email, nego sprema pripremljenu poruku i status u evidenciju.</span></span></label>'+ 
+    '</div>';
+  }
+
   function selectedProcedures(){
     var out=[]; var nodes=document.querySelectorAll('.careProc:checked');
     for(var i=0;i<nodes.length;i++) out.push(nodes[i].value);
@@ -55,6 +63,7 @@
   }
 
   function val(id){ var n=document.getElementById(id); return n?n.value:''; }
+  function checked(id){ var n=document.getElementById(id); return !!(n&&n.checked); }
 
   function ensureQrLib(cb){
     if(window.QRCode){ cb(); return; }
@@ -91,16 +100,17 @@
         var procHtml=isOpen?procedureChecklist():'';
         var procDesc=isOpen?procedureDescriptionField():'';
         var clinicalHtml=isOpen?clinicalFields():'';
+        var familyHtml=isOpen?familyNotifyField(p):'';
         view.innerHTML='<div class="card"><h2>'+esc(full(p))+'</h2><p class="muted">'+esc(p.address||'')+'</p></div>'+ 
           '<div class="card"><h3>Status njege</h3><p>'+(isOpen?'<strong style="color:var(--ok)">Njega je započeta</strong><br><span class="muted">Početak: '+esc(fmt(open.started_at))+' · '+esc(open.started_by_name||'')+'</span>':'<strong>Njega nije započeta</strong>')+'</p>'+ 
-          procHtml+procDesc+clinicalHtml+
+          procHtml+procDesc+clinicalHtml+familyHtml+
           '<label style="margin-top:12px">Dodatna napomena</label><textarea id="visitNote" rows="3" placeholder="Opcionalno"></textarea>'+ 
           '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="toggleVisit" type="button">'+(isOpen?'Završetak njege':'Početak njege')+'</button><a class="btn ghost" href="#patient?id='+esc(p.id)+'">Profil pacijenta</a></div><div id="scanMsg" class="muted" style="margin-top:8px"></div></div>';
         var btn=$('#toggleVisit');
         if(btn)btn.onclick=function(){
           var note=$('#visitNote')?$('#visitNote').value:''; var msg=$('#scanMsg'); var procedures=isOpen?selectedProcedures():''; var carePlanDone=isOpen?selectedCarePlanDone():'';
           btn.disabled=true; btn.textContent=isOpen?'Završavam...':'Započinjem...';
-          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,procedure_note:val('procedureNote'),care_plan_done:carePlanDone,bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
+          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,procedure_note:val('procedureNote'),care_plan_done:carePlanDone,notify_family:checked('notifyFamily'),bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
         };
       }).catch(function(err){ view.innerHTML='<div class="alert err">Greška: '+esc(err.message||err)+'</div>'; });
     }
@@ -151,6 +161,14 @@
     return parts.join(' · ');
   }
 
+  function familyText(v){
+    if(!v.family_notification_requested) return '-';
+    var status=v.family_notification_status==='prepared'?'Pripremljeno':'Zabilježeno';
+    var html='<div><strong>'+esc(status)+'</strong>'+(v.family_notification_to?'<br><span class="muted">Za: '+esc(v.family_notification_to)+'</span>':'')+(v.family_notification_at?'<br><span class="muted">'+esc(fmt(v.family_notification_at))+'</span>':'')+'</div>';
+    if(v.family_notification_message) html+='<div class="muted" style="margin-top:4px">'+esc(v.family_notification_message)+'</div>';
+    return html;
+  }
+
   function procedureCell(v){
     var procs=v.performed_procedures||'';
     var desc=v.procedure_note||'';
@@ -172,6 +190,7 @@
       '<td>'+esc(durationText(v.started_at,v.finished_at))+'</td>'+ 
       '<td>'+procedureCell(v)+'</td>'+ 
       '<td>'+esc(clinical||'-')+'</td>'+ 
+      '<td>'+familyText(v)+'</td>'+ 
       '<td>'+esc(note||'-')+'</td>'+ 
     '</tr>';
   }
@@ -192,7 +211,7 @@
         card.innerHTML='<h3>Povijest posjeta</h3><div class="empty">Nema evidentiranih posjeta za ovog pacijenta.</div>';
       } else {
         var rows=''; for(var i=0;i<items.length;i++) rows+=visitRow(items[i]);
-        card.innerHTML='<h3>Povijest posjeta</h3><p class="muted">Zadnjih '+items.length+' posjeta. Otvorena njega prikazuje se kao “U tijeku”.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Početak</th><th>Završetak</th><th>Trajanje</th><th>Postupci i opis</th><th>Klinički podaci</th><th>Napomena</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        card.innerHTML='<h3>Povijest posjeta</h3><p class="muted">Zadnjih '+items.length+' posjeta. Otvorena njega prikazuje se kao “U tijeku”.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Početak</th><th>Završetak</th><th>Trajanje</th><th>Postupci i opis</th><th>Klinički podaci</th><th>Obitelj</th><th>Napomena</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
       }
       v.appendChild(card);
       renderedVisitsId=patientId;
