@@ -60,8 +60,10 @@ module.exports = function setupHomecareCheckins(opts = {}) {
         finished_at TIMESTAMPTZ,
         start_note TEXT NOT NULL DEFAULT '',
         finish_note TEXT NOT NULL DEFAULT '',
+        performed_procedures TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS performed_procedures TEXT NOT NULL DEFAULT '';
       CREATE INDEX IF NOT EXISTS idx_care_visits_patient ON care_visits(patient_id, started_at DESC);
       CREATE INDEX IF NOT EXISTS idx_care_visits_open ON care_visits(patient_id) WHERE finished_at IS NULL;
     `);
@@ -99,7 +101,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       const patient = await pool.query('SELECT id FROM patients WHERE tenant_id=$1 AND id=$2 AND active=TRUE LIMIT 1', [tenantId, patientId]);
       if (!patient.rows.length) return res.status(404).json({ error: 'Patient not found' });
       const rows = await pool.query(
-        'SELECT id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
+        'SELECT id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note, performed_procedures FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
         [tenantId, patientId]
       );
       res.json({ items: rows.rows });
@@ -132,7 +134,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       const patientId = p.rows[0].id;
       const open = await pool.query('SELECT id FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 AND finished_at IS NULL ORDER BY started_at DESC LIMIT 1', [tenantId, patientId]);
       if (open.rows.length) {
-        const done = await pool.query('UPDATE care_visits SET finished_by=$1, finished_by_name=$2, finish_note=$3, finished_at=NOW() WHERE tenant_id=$4 AND id=$5 RETURNING id, started_at, finished_at', [userIdOf(req), userNameOf(req), clean(req.body && req.body.note, 1000), tenantId, open.rows[0].id]);
+        const done = await pool.query('UPDATE care_visits SET finished_by=$1, finished_by_name=$2, finish_note=$3, performed_procedures=$4, finished_at=NOW() WHERE tenant_id=$5 AND id=$6 RETURNING id, started_at, finished_at, performed_procedures', [userIdOf(req), userNameOf(req), clean(req.body && req.body.note, 1000), clean(req.body && req.body.procedures, 1500), tenantId, open.rows[0].id]);
         return res.json({ ok: true, action: 'OUT', visit: done.rows[0] });
       }
       const started = await pool.query('INSERT INTO care_visits (tenant_id, patient_id, started_by, started_by_name, start_note) VALUES ($1,$2,$3,$4,$5) RETURNING id, started_at', [tenantId, patientId, userIdOf(req), userNameOf(req), clean(req.body && req.body.note, 1000)]);
