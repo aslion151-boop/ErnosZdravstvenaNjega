@@ -62,6 +62,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
         finish_note TEXT NOT NULL DEFAULT '',
         performed_procedures TEXT NOT NULL DEFAULT '',
         procedure_note TEXT NOT NULL DEFAULT '',
+        care_plan_done TEXT NOT NULL DEFAULT '',
         bp TEXT NOT NULL DEFAULT '',
         pulse TEXT NOT NULL DEFAULT '',
         temperature TEXT NOT NULL DEFAULT '',
@@ -72,6 +73,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       );
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS performed_procedures TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS procedure_note TEXT NOT NULL DEFAULT '';
+      ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS care_plan_done TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS bp TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS pulse TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS temperature TEXT NOT NULL DEFAULT '';
@@ -115,7 +117,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       const patient = await pool.query('SELECT id FROM patients WHERE tenant_id=$1 AND id=$2 AND active=TRUE LIMIT 1', [tenantId, patientId]);
       if (!patient.rows.length) return res.status(404).json({ error: 'Patient not found' });
       const rows = await pool.query(
-        'SELECT id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note, performed_procedures, procedure_note, bp, pulse, temperature, spo2, pain_score, wound_note FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
+        'SELECT id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note, performed_procedures, procedure_note, care_plan_done, bp, pulse, temperature, spo2, pain_score, wound_note FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
         [tenantId, patientId]
       );
       res.json({ items: rows.rows });
@@ -150,8 +152,8 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       if (open.rows.length) {
         const b = req.body || {};
         const done = await pool.query(
-          'UPDATE care_visits SET finished_by=$1, finished_by_name=$2, finish_note=$3, performed_procedures=$4, procedure_note=$5, bp=$6, pulse=$7, temperature=$8, spo2=$9, pain_score=$10, wound_note=$11, finished_at=NOW() WHERE tenant_id=$12 AND id=$13 RETURNING id, started_at, finished_at, performed_procedures, procedure_note, bp, pulse, temperature, spo2, pain_score, wound_note',
-          [userIdOf(req), userNameOf(req), clean(b.note, 1000), clean(b.procedures, 1500), clean(b.procedure_note, 2000), clean(b.bp, 40), clean(b.pulse, 40), clean(b.temperature, 40), clean(b.spo2, 40), clean(b.pain_score, 40), clean(b.wound_note, 1000), tenantId, open.rows[0].id]
+          'UPDATE care_visits SET finished_by=$1, finished_by_name=$2, finish_note=$3, performed_procedures=$4, procedure_note=$5, care_plan_done=$6, bp=$7, pulse=$8, temperature=$9, spo2=$10, pain_score=$11, wound_note=$12, finished_at=NOW() WHERE tenant_id=$13 AND id=$14 RETURNING id, started_at, finished_at, performed_procedures, procedure_note, care_plan_done, bp, pulse, temperature, spo2, pain_score, wound_note',
+          [userIdOf(req), userNameOf(req), clean(b.note, 1000), clean(b.procedures, 1500), clean(b.procedure_note, 2000), clean(b.care_plan_done, 2000), clean(b.bp, 40), clean(b.pulse, 40), clean(b.temperature, 40), clean(b.spo2, 40), clean(b.pain_score, 40), clean(b.wound_note, 1000), tenantId, open.rows[0].id]
         );
         return res.json({ ok: true, action: 'OUT', visit: done.rows[0] });
       }
