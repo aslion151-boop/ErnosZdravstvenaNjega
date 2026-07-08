@@ -67,9 +67,60 @@
     return txt.indexOf('QR/NFC link')>=0 || txt.indexOf('QR/NFC tag')>=0 || txt.indexOf('privremeni link')>=0 || txt.indexOf('Početak njege - sljedeći korak')>=0;
   }
 
+  function isVisitHistoryCard(card){
+    var txt=card.textContent||'';
+    return txt.indexOf('Povijest posjeta')>=0 || txt.indexOf('Nema evidentiranih posjeta')>=0;
+  }
+
   function removeQrCards(view){
     var cards=view.querySelectorAll('.card');
     for(var i=cards.length-1;i>=0;i--){ if(isQrCard(cards[i])) cards[i].parentNode.removeChild(cards[i]); }
+  }
+
+  function removeVisitCards(view){
+    var cards=view.querySelectorAll('.card');
+    for(var i=cards.length-1;i>=0;i--){ if(isVisitHistoryCard(cards[i])) cards[i].parentNode.removeChild(cards[i]); }
+  }
+
+  function durationText(started, finished){
+    if(!started || !finished) return 'u tijeku';
+    try{
+      var ms=new Date(finished).getTime()-new Date(started).getTime();
+      if(!isFinite(ms) || ms<0) return '-';
+      var min=Math.round(ms/60000);
+      if(min<60) return min+' min';
+      var h=Math.floor(min/60); var m=min%60;
+      return h+' h '+m+' min';
+    }catch(e){ return '-'; }
+  }
+
+  function visitRow(v){
+    var open=!v.finished_at;
+    var note=(v.finish_note||v.start_note||'');
+    return '<tr>'+ 
+      '<td><strong>'+(open?'<span style="color:var(--ok)">U tijeku</span>':'Završeno')+'</strong></td>'+ 
+      '<td>'+esc(fmt(v.started_at))+'<br><span class="muted">'+esc(v.started_by_name||'')+'</span></td>'+ 
+      '<td>'+esc(v.finished_at?fmt(v.finished_at):'-')+'<br><span class="muted">'+esc(v.finished_by_name||'')+'</span></td>'+ 
+      '<td>'+esc(durationText(v.started_at,v.finished_at))+'</td>'+ 
+      '<td>'+esc(note||'-')+'</td>'+ 
+    '</tr>';
+  }
+
+  function renderVisitHistory(patientId){
+    var view=$('#view'); if(!view) return;
+    api('/api/care/patients/'+encodeURIComponent(patientId)+'/visits').then(function(data){
+      var v=$('#view'); if(!v) return;
+      removeVisitCards(v);
+      var items=data.items||[];
+      var card=document.createElement('div'); card.className='card'; card.id='visitHistoryCard';
+      if(!items.length){
+        card.innerHTML='<h3>Povijest posjeta</h3><div class="empty">Nema evidentiranih posjeta za ovog pacijenta.</div>';
+      } else {
+        var rows=''; for(var i=0;i<items.length;i++) rows+=visitRow(items[i]);
+        card.innerHTML='<h3>Povijest posjeta</h3><p class="muted">Zadnjih '+items.length+' posjeta. Otvorena njega prikazuje se kao “U tijeku”.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Početak</th><th>Završetak</th><th>Trajanje</th><th>Napomena</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      }
+      v.appendChild(card);
+    }).catch(function(err){ console.warn('[scan-addon] visits failed',err); });
   }
 
   function enhancePatientProfile(){
@@ -77,6 +128,7 @@
     if(r !== '#patient') return;
     var id=params().get('id'); if(!id) return;
     var view=$('#view'); if(!view) return;
+    renderVisitHistory(id);
     if(applyingCard && pendingProfileId===id) return;
     if($('#realScanCard') && pendingProfileId===id) return;
     pendingProfileId=id;
