@@ -25,6 +25,10 @@
     return html;
   }
 
+  function procedureDescriptionField(){
+    return '<div style="margin-top:12px"><label>Opis postupaka od strane tehničara</label><textarea id="procedureNote" rows="4" placeholder="Opiši što je točno učinjeno, npr. rana očišćena fiziološkom, postavljen novi sterilni oblog, pacijent educiran o znakovima infekcije..."></textarea></div>';
+  }
+
   function clinicalFields(){
     return '<div id="clinicalBox" style="margin-top:12px"><h3 style="margin-top:0">Klinička zapažanja</h3><div class="grid cols-3">'+
       '<div><label>Tlak</label><input id="visitBp" placeholder="npr. 130/80"></div>'+ 
@@ -77,17 +81,18 @@
       api('/api/care/scan/'+encodeURIComponent(code)).then(function(data){
         var p=data.patient||{}; var open=data.open_visit; var isOpen=!!open;
         var procHtml=isOpen?procedureChecklist():'';
+        var procDesc=isOpen?procedureDescriptionField():'';
         var clinicalHtml=isOpen?clinicalFields():'';
         view.innerHTML='<div class="card"><h2>'+esc(full(p))+'</h2><p class="muted">'+esc(p.address||'')+'</p></div>'+ 
           '<div class="card"><h3>Status njege</h3><p>'+(isOpen?'<strong style="color:var(--ok)">Njega je započeta</strong><br><span class="muted">Početak: '+esc(fmt(open.started_at))+' · '+esc(open.started_by_name||'')+'</span>':'<strong>Njega nije započeta</strong>')+'</p>'+ 
-          procHtml+clinicalHtml+
-          '<label style="margin-top:12px">Napomena</label><textarea id="visitNote" rows="3" placeholder="Opcionalno"></textarea>'+ 
+          procHtml+procDesc+clinicalHtml+
+          '<label style="margin-top:12px">Dodatna napomena</label><textarea id="visitNote" rows="3" placeholder="Opcionalno"></textarea>'+ 
           '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="toggleVisit" type="button">'+(isOpen?'Završetak njege':'Početak njege')+'</button><a class="btn ghost" href="#patient?id='+esc(p.id)+'">Profil pacijenta</a></div><div id="scanMsg" class="muted" style="margin-top:8px"></div></div>';
         var btn=$('#toggleVisit');
         if(btn)btn.onclick=function(){
           var note=$('#visitNote')?$('#visitNote').value:''; var msg=$('#scanMsg'); var procedures=isOpen?selectedProcedures():'';
           btn.disabled=true; btn.textContent=isOpen?'Završavam...':'Započinjem...';
-          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
+          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,procedure_note:val('procedureNote'),bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
         };
       }).catch(function(err){ view.innerHTML='<div class="alert err">Greška: '+esc(err.message||err)+'</div>'; });
     }
@@ -138,17 +143,24 @@
     return parts.join(' · ');
   }
 
+  function procedureCell(v){
+    var procs=v.performed_procedures||'';
+    var desc=v.procedure_note||'';
+    var html='<div>'+esc(procs||'-')+'</div>';
+    if(desc) html+='<div class="muted" style="margin-top:4px"><strong>Opis:</strong> '+esc(desc)+'</div>';
+    return html;
+  }
+
   function visitRow(v){
     var open=!v.finished_at;
     var note=(v.finish_note||v.start_note||'');
-    var procs=v.performed_procedures||'';
     var clinical=clinicalText(v);
     return '<tr>'+ 
       '<td><strong>'+(open?'<span style="color:var(--ok)">U tijeku</span>':'Završeno')+'</strong></td>'+ 
       '<td>'+esc(fmt(v.started_at))+'<br><span class="muted">'+esc(v.started_by_name||'')+'</span></td>'+ 
       '<td>'+esc(v.finished_at?fmt(v.finished_at):'-')+'<br><span class="muted">'+esc(v.finished_by_name||'')+'</span></td>'+ 
       '<td>'+esc(durationText(v.started_at,v.finished_at))+'</td>'+ 
-      '<td>'+esc(procs||'-')+'</td>'+ 
+      '<td>'+procedureCell(v)+'</td>'+ 
       '<td>'+esc(clinical||'-')+'</td>'+ 
       '<td>'+esc(note||'-')+'</td>'+ 
     '</tr>';
@@ -165,7 +177,7 @@
         card.innerHTML='<h3>Povijest posjeta</h3><div class="empty">Nema evidentiranih posjeta za ovog pacijenta.</div>';
       } else {
         var rows=''; for(var i=0;i<items.length;i++) rows+=visitRow(items[i]);
-        card.innerHTML='<h3>Povijest posjeta</h3><p class="muted">Zadnjih '+items.length+' posjeta. Otvorena njega prikazuje se kao “U tijeku”.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Početak</th><th>Završetak</th><th>Trajanje</th><th>Postupci</th><th>Klinički podaci</th><th>Napomena</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        card.innerHTML='<h3>Povijest posjeta</h3><p class="muted">Zadnjih '+items.length+' posjeta. Otvorena njega prikazuje se kao “U tijeku”.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Početak</th><th>Završetak</th><th>Trajanje</th><th>Postupci i opis</th><th>Klinički podaci</th><th>Napomena</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
       }
       v.appendChild(card);
     }).catch(function(err){ console.warn('[scan-addon] visits failed',err); });
