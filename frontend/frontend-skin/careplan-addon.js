@@ -1,6 +1,9 @@
 /* Ernos Zdravstvena Njega - care plan addon */
 (function(){
   var busyKey = '';
+  var renderedProfileId = '';
+  var renderedScanId = '';
+  var runTimer = null;
 
   function $(s){ return document.querySelector(s); }
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]||ch;}); }
@@ -31,8 +34,33 @@
     return html;
   }
 
-  function renderProfilePlan(patientId){
+  function bindPlanButtons(patientId){
+    var add=$('#addPlanItem');
+    if(add && !add.__bound)add.onclick=function(){
+      var title=$('#planTitle')?$('#planTitle').value:'';
+      var description=$('#planDesc')?$('#planDesc').value:'';
+      add.disabled=true; add.textContent='Spremam...';
+      api('/api/care/patients/'+encodeURIComponent(patientId)+'/plan',{method:'POST',body:{title:title,description:description}}).then(function(){
+        renderedProfileId=''; busyKey=''; renderProfilePlan(patientId,true);
+      }).catch(function(err){ alert('Greška: '+(err.message||err)); add.disabled=false; add.textContent='Dodaj u plan njege'; });
+    };
+    if(add) add.__bound=true;
+    var dels=document.querySelectorAll('.deletePlanItem');
+    for(var i=0;i<dels.length;i++) if(!dels[i].__bound) dels[i].onclick=function(){
+      var id=this.getAttribute('data-id');
+      var btn=this; btn.disabled=true; btn.textContent='Uklanjam...';
+      api('/api/care/plan/'+encodeURIComponent(id),{method:'DELETE'}).then(function(){
+        renderedProfileId=''; busyKey=''; renderProfilePlan(patientId,true);
+      }).catch(function(err){ alert('Greška: '+(err.message||err)); btn.disabled=false; btn.textContent='Ukloni'; });
+    };
+    for(var j=0;j<dels.length;j++) dels[j].__bound=true;
+  }
+
+  function renderProfilePlan(patientId, force){
     var view=$('#view'); if(!view || !patientId) return;
+    if(!force && renderedProfileId===patientId && $('#carePlanCard')) return;
+    var active=document.activeElement;
+    if(!force && active && $('#carePlanCard') && $('#carePlanCard').contains(active)) return;
     var key='profile:'+patientId;
     if(busyKey===key) return;
     busyKey=key;
@@ -40,26 +68,15 @@
       var v=$('#view'); if(!v) return;
       removeCarePlanCards();
       var items=data.items||[];
-      var card=document.createElement('div'); card.className='card'; card.id='carePlanCard';
+      var card=document.createElement('div'); card.className='card'; card.id='carePlanCard'; card.setAttribute('data-patient-id', patientId);
       card.innerHTML='<h3>Plan njege</h3><p class="muted">Stalne upute i očekivani postupci za ovog pacijenta. Ovo tehničar vidi prije ili tijekom posjete.</p>'+ 
         '<div class="grid cols-2" style="align-items:end"><div><label>Naziv stavke</label><input id="planTitle" placeholder="npr. Previjanje kronične rane"></div><div><label>Kratki opis</label><input id="planDesc" placeholder="npr. kontrola sekrecije, zamjena obloga, edukacija"></div></div>'+ 
         '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="addPlanItem" type="button">Dodaj u plan njege</button></div>'+ 
         '<div id="planItems" style="margin-top:12px">'+planListHtml(items,true)+'</div>';
       var qr=document.getElementById('realScanCard');
       if(qr && qr.parentNode) qr.parentNode.insertBefore(card, qr.nextSibling); else v.appendChild(card);
-      var add=$('#addPlanItem');
-      if(add)add.onclick=function(){
-        var title=$('#planTitle')?$('#planTitle').value:'';
-        var description=$('#planDesc')?$('#planDesc').value:'';
-        add.disabled=true; add.textContent='Spremam...';
-        api('/api/care/patients/'+encodeURIComponent(patientId)+'/plan',{method:'POST',body:{title:title,description:description}}).then(function(){ busyKey=''; renderProfilePlan(patientId); }).catch(function(err){ alert('Greška: '+(err.message||err)); add.disabled=false; add.textContent='Dodaj u plan njege'; });
-      };
-      var dels=document.querySelectorAll('.deletePlanItem');
-      for(var i=0;i<dels.length;i++) dels[i].onclick=function(){
-        var id=this.getAttribute('data-id');
-        var btn=this; btn.disabled=true; btn.textContent='Uklanjam...';
-        api('/api/care/plan/'+encodeURIComponent(id),{method:'DELETE'}).then(function(){ busyKey=''; renderProfilePlan(patientId); }).catch(function(err){ alert('Greška: '+(err.message||err)); btn.disabled=false; btn.textContent='Ukloni'; });
-      };
+      renderedProfileId=patientId;
+      bindPlanButtons(patientId);
     }).catch(function(err){ console.warn('[careplan-addon] profile plan failed',err); }).then(function(){ if(busyKey===key) busyKey=''; });
   }
 
@@ -69,19 +86,21 @@
     try{ return new URLSearchParams((a.getAttribute('href').split('?')[1]||'')).get('id')||''; }catch(e){ return ''; }
   }
 
-  function renderScanPlan(patientId){
+  function renderScanPlan(patientId, force){
     if(!patientId) return;
+    if(!force && renderedScanId===patientId && $('#scanCarePlanCard')) return;
     var key='scan:'+patientId;
-    if(busyKey===key || $('#scanCarePlanCard')) return;
+    if(busyKey===key) return;
     busyKey=key;
     api('/api/care/patients/'+encodeURIComponent(patientId)+'/plan').then(function(data){
       var view=$('#view'); if(!view) return;
-      if($('#scanCarePlanCard')) return;
+      var existing=$('#scanCarePlanCard'); if(existing) existing.parentNode.removeChild(existing);
       var items=data.items||[];
-      var card=document.createElement('div'); card.className='card'; card.id='scanCarePlanCard';
+      var card=document.createElement('div'); card.className='card'; card.id='scanCarePlanCard'; card.setAttribute('data-patient-id', patientId);
       card.innerHTML='<h3>Plan njege</h3><p class="muted">Očekivani postupci/upute za ovu posjetu.</p>'+planListHtml(items,false);
       var statusCards=view.querySelectorAll('.card');
       if(statusCards.length>1) view.insertBefore(card,statusCards[1]); else view.appendChild(card);
+      renderedScanId=patientId;
     }).catch(function(err){ console.warn('[careplan-addon] scan plan failed',err); }).then(function(){ if(busyKey===key) busyKey=''; });
   }
 
@@ -89,16 +108,21 @@
     var route=(location.hash||'').split('?')[0];
     if(route==='#patient'){
       var id=params().get('id')||'';
-      if(id) renderProfilePlan(id);
+      if(id) renderProfilePlan(id,false);
     }
     if(route==='#scan'){
       var pid=patientIdFromScanDom();
-      if(pid) renderScanPlan(pid);
+      if(pid) renderScanPlan(pid,false);
     }
   }
 
-  window.addEventListener('hashchange',function(){ busyKey=''; setTimeout(run,150); });
-  document.addEventListener('DOMContentLoaded',function(){ setTimeout(run,300); });
-  try{ new MutationObserver(function(){ setTimeout(run,120); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
-  if(document.readyState!=='loading') setTimeout(run,300);
+  function scheduleRun(delay){
+    if(runTimer) clearTimeout(runTimer);
+    runTimer=setTimeout(function(){ runTimer=null; run(); }, delay||200);
+  }
+
+  window.addEventListener('hashchange',function(){ busyKey=''; renderedProfileId=''; renderedScanId=''; scheduleRun(150); });
+  document.addEventListener('DOMContentLoaded',function(){ scheduleRun(300); });
+  try{ new MutationObserver(function(){ scheduleRun(350); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
+  if(document.readyState!=='loading') scheduleRun(300);
 })();
