@@ -4,6 +4,8 @@
   var applyingCard = false;
   var qrLibLoading = false;
   var qrLibReadyCallbacks = [];
+  var renderedVisitsId = '';
+  var visitsLoading = false;
 
   function $(s){ return document.querySelector(s); }
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]||ch;}); }
@@ -166,8 +168,13 @@
     '</tr>';
   }
 
-  function renderVisitHistory(patientId){
-    var view=$('#view'); if(!view) return;
+  function renderVisitHistory(patientId, force){
+    var view=$('#view'); if(!view || !patientId) return;
+    if(!force && renderedVisitsId===patientId && $('#visitHistoryCard')) return;
+    if(visitsLoading) return;
+    var active=document.activeElement;
+    if(!force && active && $('#carePlanCard') && $('#carePlanCard').contains(active)) return;
+    visitsLoading=true;
     api('/api/care/patients/'+encodeURIComponent(patientId)+'/visits').then(function(data){
       var v=$('#view'); if(!v) return;
       removeVisitCards(v);
@@ -180,7 +187,8 @@
         card.innerHTML='<h3>Povijest posjeta</h3><p class="muted">Zadnjih '+items.length+' posjeta. Otvorena njega prikazuje se kao “U tijeku”.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Početak</th><th>Završetak</th><th>Trajanje</th><th>Postupci i opis</th><th>Klinički podaci</th><th>Napomena</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
       }
       v.appendChild(card);
-    }).catch(function(err){ console.warn('[scan-addon] visits failed',err); });
+      renderedVisitsId=patientId;
+    }).catch(function(err){ console.warn('[scan-addon] visits failed',err); }).then(function(){ visitsLoading=false; });
   }
 
   function enhancePatientProfile(){
@@ -188,7 +196,7 @@
     if(r !== '#patient') return;
     var id=params().get('id'); if(!id) return;
     var view=$('#view'); if(!view) return;
-    renderVisitHistory(id);
+    renderVisitHistory(id,false);
     if(applyingCard && pendingProfileId===id) return;
     if($('#realScanCard') && pendingProfileId===id) return;
     pendingProfileId=id;
@@ -220,8 +228,8 @@
     tries++;
     if(tries<12) setTimeout(run,300);
   }
-  window.addEventListener('hashchange',function(){ tries=0; pendingProfileId=''; applyingCard=false; setTimeout(run,50); });
+  window.addEventListener('hashchange',function(){ tries=0; pendingProfileId=''; applyingCard=false; renderedVisitsId=''; visitsLoading=false; setTimeout(run,50); });
   document.addEventListener('DOMContentLoaded',function(){ tries=0; setTimeout(run,150); });
-  try{ new MutationObserver(function(){ if((location.hash||'').indexOf('#patient')===0) setTimeout(enhancePatientProfile,80); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
+  try{ new MutationObserver(function(){ if((location.hash||'').indexOf('#patient')===0) setTimeout(enhancePatientProfile,120); }).observe(document.documentElement,{childList:true,subtree:true}); }catch(e){}
   if(document.readyState!=='loading') setTimeout(run,150);
 })();
