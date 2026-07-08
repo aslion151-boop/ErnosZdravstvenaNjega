@@ -91,6 +91,24 @@ module.exports = function setupHomecareCheckins(opts = {}) {
     }
   });
 
+  app.get('/api/care/patients/:id/visits', requireUser, async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const patientId = Number(req.params.id || 0);
+      if (!patientId) return res.status(400).json({ error: 'Missing patient id' });
+      const patient = await pool.query('SELECT id FROM patients WHERE tenant_id=$1 AND id=$2 AND active=TRUE LIMIT 1', [tenantId, patientId]);
+      if (!patient.rows.length) return res.status(404).json({ error: 'Patient not found' });
+      const rows = await pool.query(
+        'SELECT id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
+        [tenantId, patientId]
+      );
+      res.json({ items: rows.rows });
+    } catch (e) {
+      console.error('[homecare_checkins] visits failed', e);
+      res.status(500).json({ error: 'Server error', detail: e.message });
+    }
+  });
+
   app.get('/api/care/scan/:code', requireUser, async (req, res) => {
     try {
       const tenantId = tenantOf(req);
