@@ -34,6 +34,21 @@
     return html;
   }
 
+  function planChecklistHtml(items){
+    if(!items || !items.length) return '<div class="empty">Nema upisanog plana njege za ovog pacijenta.</div>';
+    var html='<div style="display:grid;gap:8px">';
+    for(var i=0;i<items.length;i++){
+      var it=items[i]||{};
+      var label=(it.title||'Stavka plana njege')+(it.description?' - '+it.description:'');
+      html+='<label style="display:flex;align-items:flex-start;gap:10px;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff;font-weight:650">'+
+        '<input class="carePlanDone" type="checkbox" value="'+esc(label)+'" style="width:auto;min-height:0;margin-top:3px">'+
+        '<span><strong>'+esc(it.title||'Stavka plana njege')+'</strong>'+(it.description?'<span class="muted" style="display:block;margin-top:4px">'+esc(it.description)+'</span>':'')+'</span>'+ 
+      '</label>';
+    }
+    html+='</div>';
+    return html;
+  }
+
   function bindPlanButtons(patientId){
     var add=$('#addPlanItem');
     if(add && !add.__bound)add.onclick=function(){
@@ -96,8 +111,9 @@
       var view=$('#view'); if(!view) return;
       var existing=$('#scanCarePlanCard'); if(existing) existing.parentNode.removeChild(existing);
       var items=data.items||[];
+      var isOpen=!!document.getElementById('toggleVisit') && (document.getElementById('toggleVisit').textContent||'').indexOf('Završetak')>=0;
       var card=document.createElement('div'); card.className='card'; card.id='scanCarePlanCard'; card.setAttribute('data-patient-id', patientId);
-      card.innerHTML='<h3>Plan njege</h3><p class="muted">Očekivani postupci/upute za ovu posjetu.</p>'+planListHtml(items,false);
+      card.innerHTML='<h3>Plan njege</h3><p class="muted">Očekivani postupci/upute za ovu posjetu.'+(isOpen?' Označi što je stvarno odrađeno prije završetka njege.':'')+'</p>'+(isOpen?planChecklistHtml(items):planListHtml(items,false));
       var statusCards=view.querySelectorAll('.card');
       if(statusCards.length>1) view.insertBefore(card,statusCards[1]); else view.appendChild(card);
       renderedScanId=patientId;
