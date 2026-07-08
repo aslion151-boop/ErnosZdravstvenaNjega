@@ -1,13 +1,15 @@
 const crypto = require('crypto');
 const setupHomecareCheckins = require('./homecare_checkins.cjs');
+const setupHomecareCarePlan = require('./homecare_careplan.cjs');
 
 module.exports = function setupFamilyTouchpoint(opts = {}) {
   const { app, pool, auth } = opts;
   if (!app || !pool) return;
   const requireUser = typeof auth === 'function' ? auth : function(_req,_res,next){ next(); };
 
-  // Register QR/NFC home-care routes immediately. The plugin creates/migrates its own tables.
+  // Register QR/NFC home-care routes immediately. Plugins create/migrate their own tables.
   setupHomecareCheckins(opts);
+  setupHomecareCarePlan(opts);
 
   function tenantOf(req){ return Number(req?.user?.tenant_id || req?.tenant_id || 1); }
   function userIdOf(req){ return Number(req?.user?.id || req?.user?.user_id || 0) || null; }
