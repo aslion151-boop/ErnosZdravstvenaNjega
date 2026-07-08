@@ -48,6 +48,12 @@
     return out.join(', ');
   }
 
+  function selectedCarePlanDone(){
+    var out=[]; var nodes=document.querySelectorAll('.carePlanDone:checked');
+    for(var i=0;i<nodes.length;i++) out.push(nodes[i].value);
+    return out.join(', ');
+  }
+
   function val(id){ var n=document.getElementById(id); return n?n.value:''; }
 
   function ensureQrLib(cb){
@@ -92,9 +98,9 @@
           '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="toggleVisit" type="button">'+(isOpen?'Završetak njege':'Početak njege')+'</button><a class="btn ghost" href="#patient?id='+esc(p.id)+'">Profil pacijenta</a></div><div id="scanMsg" class="muted" style="margin-top:8px"></div></div>';
         var btn=$('#toggleVisit');
         if(btn)btn.onclick=function(){
-          var note=$('#visitNote')?$('#visitNote').value:''; var msg=$('#scanMsg'); var procedures=isOpen?selectedProcedures():'';
+          var note=$('#visitNote')?$('#visitNote').value:''; var msg=$('#scanMsg'); var procedures=isOpen?selectedProcedures():''; var carePlanDone=isOpen?selectedCarePlanDone():'';
           btn.disabled=true; btn.textContent=isOpen?'Završavam...':'Započinjem...';
-          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,procedure_note:val('procedureNote'),bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
+          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,procedure_note:val('procedureNote'),care_plan_done:carePlanDone,bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
         };
       }).catch(function(err){ view.innerHTML='<div class="alert err">Greška: '+esc(err.message||err)+'</div>'; });
     }
@@ -148,7 +154,9 @@
   function procedureCell(v){
     var procs=v.performed_procedures||'';
     var desc=v.procedure_note||'';
+    var plan=v.care_plan_done||'';
     var html='<div>'+esc(procs||'-')+'</div>';
+    if(plan) html+='<div class="muted" style="margin-top:4px"><strong>Iz plana odrađeno:</strong> '+esc(plan)+'</div>';
     if(desc) html+='<div class="muted" style="margin-top:4px"><strong>Opis:</strong> '+esc(desc)+'</div>';
     return html;
   }
