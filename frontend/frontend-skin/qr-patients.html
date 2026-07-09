@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ernos - QR/NFC naljepnice pacijenata</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f5f7;color:#263238;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}
+    header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e1e5ea;padding:12px 18px;display:flex;gap:10px;justify-content:space-between;align-items:center;z-index:5}
+    h1{font-size:20px;margin:0}.muted{color:#667085}.btn{border:1px solid #4E6E81;background:#4E6E81;color:white;border-radius:10px;padding:9px 12px;font-weight:800;text-decoration:none;cursor:pointer}.btn.ghost{background:white;color:#4E6E81}.wrap{padding:18px;max-width:1200px;margin:0 auto}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}.label{background:#fff;border:1px solid #d9dee7;border-radius:14px;padding:12px;min-height:280px;display:flex;flex-direction:column;align-items:center;text-align:center;break-inside:avoid;page-break-inside:avoid}.qr{width:170px;height:170px;margin:6px auto 10px auto}.name{font-weight:900;font-size:16px}.addr{font-size:12px;color:#667085;margin-top:3px;min-height:32px}.code{font-size:10px;color:#667085;margin-top:auto;word-break:break-all}.empty{background:#fff;border:1px dashed #d9dee7;border-radius:14px;padding:20px;text-align:center;color:#667085}.err{background:#fdeeee;border:1px solid #f1c9c9;color:#7a2a2a;border-radius:14px;padding:14px}@media print{header{display:none}.wrap{padding:0}.grid{grid-template-columns:repeat(3,1fr);gap:8mm}.label{border:1px solid #999;border-radius:4mm;min-height:80mm}.qr{width:45mm;height:45mm}body{background:#fff}.code{font-size:8px}}@page{size:A4;margin:10mm}
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>QR/NFC naljepnice pacijenata</h1><div class="muted">Isti link ide na QR i NFC. Prvi scan = početak njege, drugi scan = završetak njege.</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn ghost" href="/">Natrag</a><button class="btn" id="printBtn" type="button">Print</button></div>
+  </header>
+  <main class="wrap"><div id="status" class="empty">Učitavanje pacijenata...</div><div id="labels" class="grid"></div></main>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script>
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]||ch;});}
+    function token(){try{return sessionStorage.getItem('ernosToken')||localStorage.getItem('ernosToken')||'';}catch(e){return '';}}
+    function api(path,opt){opt=opt||{};var h={'Content-Type':'application/json'};var t=token();if(t)h.Authorization='Bearer '+t;return fetch(location.origin+path,{method:opt.method||'GET',headers:h,body:opt.body?JSON.stringify(opt.body):undefined}).then(function(r){return r.text().then(function(txt){var j=null;try{j=txt?JSON.parse(txt):null;}catch(e){}if(!r.ok)throw new Error((j&&(j.error||j.detail||j.message))||txt||('HTTP '+r.status));return j||{};});});}
+    function full(p){return String((p.first_name||'')+' '+(p.last_name||'')).trim();}
+    function draw(id,url){var n=document.getElementById(id);if(!n||!window.QRCode)return;n.innerHTML='';new QRCode(n,{text:url,width:170,height:170});}
+    async function load(){
+      var status=document.getElementById('status');var labels=document.getElementById('labels');
+      try{
+        if(!token()) throw new Error('Nisi prijavljen. Vrati se na aplikaciju, prijavi se, pa ponovno otvori ovu stranicu.');
+        var patients=await api('/api/patients');var items=patients.items||[];
+        if(!items.length){status.textContent='Nema pacijenata za ispis.';return;}
+        status.style.display='none';labels.innerHTML='';
+        for(var i=0;i<items.length;i++){
+          var p=items[i];var c=await api('/api/care/patients/'+encodeURIComponent(p.id)+'/code');
+          var link=location.origin+(c.url||('/#scan?t='+encodeURIComponent(c.code||'')));
+          var id='qr_'+p.id;
+          var div=document.createElement('div');div.className='label';
+          div.innerHTML='<div class="name">'+esc(full(p))+'</div><div class="addr">'+esc(p.address||'')+'</div><div class="qr" id="'+id+'"></div><div class="code">'+esc(c.code||'')+'</div>';
+          labels.appendChild(div);draw(id,link);
+        }
+      }catch(e){status.className='err';status.textContent='Greška: '+(e.message||e);}
+    }
+    document.getElementById('printBtn').onclick=function(){window.print();};
+    load();
+  </script>
+</body>
+</html>
