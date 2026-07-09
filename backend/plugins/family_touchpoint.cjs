@@ -69,6 +69,26 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
     }catch(e){ console.error('[patients] create failed', e); res.status(500).json({error:'Server error', detail:e.message}); }
   });
 
+  app.patch('/api/patients/:id', requireUser, async (req,res)=>{
+    try{
+      const tenant_id = tenantOf(req);
+      const id = Number(req.params.id || 0);
+      const b = req.body || {};
+      if(!id) return res.status(400).json({error:'Missing id'});
+      const first_name = clean(b.first_name,120);
+      const last_name = clean(b.last_name,120);
+      if(!first_name || !last_name) return res.status(400).json({error:'Ime i prezime su obavezni'});
+      const { rows } = await pool.query(
+        `UPDATE patients SET first_name=$1, last_name=$2, date_of_birth=$3, address=$4, phone=$5, family_contact_name=$6, family_contact_phone=$7, notes=$8, updated_at=NOW()
+         WHERE tenant_id=$9 AND id=$10 AND active=TRUE
+         RETURNING id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, active, created_at, updated_at`,
+        [first_name, last_name, clean(b.date_of_birth,20)||null, clean(b.address,300), clean(b.phone,80), clean(b.family_contact_name,160), clean(b.family_contact_phone,80), clean(b.notes,1500), tenant_id, id]
+      );
+      if(!rows.length) return res.status(404).json({error:'Patient not found'});
+      res.json({ok:true,item:rows[0]});
+    }catch(e){ console.error('[patients] update failed', e); res.status(500).json({error:'Server error', detail:e.message}); }
+  });
+
   app.delete('/api/patients/:id', requireUser, async (req,res)=>{
     try{
       const tenant_id = tenantOf(req);
