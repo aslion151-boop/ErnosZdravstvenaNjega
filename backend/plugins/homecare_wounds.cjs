@@ -51,8 +51,10 @@ module.exports = function setupHomecareWounds(opts = {}) {
         surrounding_skin TEXT NOT NULL DEFAULT '',
         pain_score TEXT NOT NULL DEFAULT '',
         note TEXT NOT NULL DEFAULT '',
+        photo_url TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE wound_observations ADD COLUMN IF NOT EXISTS photo_url TEXT NOT NULL DEFAULT '';
       CREATE INDEX IF NOT EXISTS idx_wound_records_patient ON wound_records(tenant_id, patient_id, active, id DESC);
       CREATE INDEX IF NOT EXISTS idx_wound_observations_wound ON wound_observations(tenant_id, wound_id, observed_at DESC);
     `);
@@ -78,7 +80,7 @@ module.exports = function setupHomecareWounds(opts = {}) {
       let observations = [];
       if (ids.length) {
         const obs = await pool.query(
-          'SELECT id, wound_id, observed_by_name, observed_at, size_text, exudate, surrounding_skin, pain_score, note FROM wound_observations WHERE tenant_id=$1 AND wound_id = ANY($2::bigint[]) ORDER BY observed_at DESC LIMIT 100',
+          'SELECT id, wound_id, observed_by_name, observed_at, size_text, exudate, surrounding_skin, pain_score, note, photo_url FROM wound_observations WHERE tenant_id=$1 AND wound_id = ANY($2::bigint[]) ORDER BY observed_at DESC LIMIT 100',
           [tenantId, ids]
         );
         observations = obs.rows;
@@ -122,10 +124,10 @@ module.exports = function setupHomecareWounds(opts = {}) {
       if (!found.rows.length) return res.status(404).json({ error: 'Wound not found' });
       const patientId = found.rows[0].patient_id;
       const saved = await pool.query(
-        `INSERT INTO wound_observations (tenant_id, wound_id, patient_id, observed_by, observed_by_name, size_text, exudate, surrounding_skin, pain_score, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         RETURNING id, wound_id, observed_by_name, observed_at, size_text, exudate, surrounding_skin, pain_score, note`,
-        [tenantId, woundId, patientId, userIdOf(req), userNameOf(req), clean(b.size_text, 120), clean(b.exudate, 300), clean(b.surrounding_skin, 300), clean(b.pain_score, 40), clean(b.note, 1500)]
+        `INSERT INTO wound_observations (tenant_id, wound_id, patient_id, observed_by, observed_by_name, size_text, exudate, surrounding_skin, pain_score, note, photo_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         RETURNING id, wound_id, observed_by_name, observed_at, size_text, exudate, surrounding_skin, pain_score, note, photo_url`,
+        [tenantId, woundId, patientId, userIdOf(req), userNameOf(req), clean(b.size_text, 120), clean(b.exudate, 300), clean(b.surrounding_skin, 300), clean(b.pain_score, 40), clean(b.note, 1500), clean(b.photo_url, 1000)]
       );
       res.json({ ok: true, item: saved.rows[0] });
     } catch (e) {
