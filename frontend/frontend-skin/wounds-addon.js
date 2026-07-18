@@ -13,6 +13,13 @@
   function fmt(v){if(!v)return '-';try{return new Date(v).toLocaleString('hr-HR');}catch(e){return String(v);}}
   function val(id){var n=document.getElementById(id);return n?n.value:'';}
 
+  function uploadImage(file){
+    if(!file) return Promise.resolve('');
+    var fd=new FormData(); fd.append('file',file);
+    var h={}; var t=token(); if(t)h.Authorization='Bearer '+t;
+    return fetch(location.origin+'/uploads',{method:'POST',headers:h,body:fd}).then(function(r){return r.text().then(function(txt){var j=null;try{j=txt?JSON.parse(txt):null;}catch(e){}if(!r.ok)throw new Error((j&&(j.error||j.message))||txt||('HTTP '+r.status));return (j&&j.url)||'';});});
+  }
+
   function removeCards(){var cards=document.querySelectorAll('.card');for(var i=cards.length-1;i>=0;i--){var txt=cards[i].textContent||'';if(txt.indexOf('Rane')>=0||txt.indexOf('Aktivne rane')>=0)cards[i].parentNode.removeChild(cards[i]);}}
 
   function obsByWound(observations){
@@ -28,7 +35,7 @@
       var w=items[i]; var obs=by[String(w.id)]||[];
       html+='<div style="border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff">'+
         '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'+
-          '<div><strong>'+esc(w.title||'Rana')+'</strong><div class="muted" style="margin-top:4px">'+esc(w.location||'-')+(w.wound_type?' · '+esc(w.wound_type):'')+'</div></div>'+
+          '<div><strong>'+esc(w.title||'Rana')+'</strong><div class="muted" style="margin-top:4px">'+esc(w.location||'-')+(w.wound_type?' · '+esc(w.wound_type):'')+'</div></div>'+ 
           (editable?'<button class="btn ghost closeWound" data-id="'+esc(w.id)+'" type="button">Zatvori ranu</button>':'')+
         '</div>';
       if(editable){
@@ -36,7 +43,7 @@
           '<div><label>Veličina</label><input class="wSize" data-id="'+esc(w.id)+'" placeholder="npr. 2 x 1 cm"></div>'+ 
           '<div><label>Sekrecija</label><input class="wExudate" data-id="'+esc(w.id)+'" placeholder="npr. nema / serozna"></div>'+ 
           '<div><label>Bol 0-10</label><input class="wPain" data-id="'+esc(w.id)+'" placeholder="npr. 3"></div>'+ 
-        '</div><label style="margin-top:8px">Okolna koža</label><input class="wSkin" data-id="'+esc(w.id)+'" placeholder="npr. suha, crvenilo, maceracija"><label style="margin-top:8px">Zapažanje</label><textarea class="wNote" data-id="'+esc(w.id)+'" rows="2" placeholder="Opis rane, oblog, promjene, preporuke..."></textarea><button class="btn addWoundObs" data-id="'+esc(w.id)+'" type="button" style="margin-top:8px">Dodaj zapažanje</button>';
+        '</div><label style="margin-top:8px">Okolna koža</label><input class="wSkin" data-id="'+esc(w.id)+'" placeholder="npr. suha, crvenilo, maceracija"><label style="margin-top:8px">Zapažanje</label><textarea class="wNote" data-id="'+esc(w.id)+'" rows="2" placeholder="Opis rane, oblog, promjene, preporuke..."></textarea><label style="margin-top:8px">Fotografija rane</label><input class="wPhoto" data-id="'+esc(w.id)+'" type="file" accept="image/*"><button class="btn addWoundObs" data-id="'+esc(w.id)+'" type="button" style="margin-top:8px">Dodaj zapažanje</button>';
       }
       if(obs.length){
         html+='<div style="margin-top:10px"><strong>Povijest zapažanja</strong>';
@@ -46,7 +53,9 @@
           if(o.exudate)details.push('Sekrecija: '+o.exudate);
           if(o.surrounding_skin)details.push('Koža: '+o.surrounding_skin);
           if(o.pain_score)details.push('Bol: '+o.pain_score+'/10');
-          html+='<div class="muted" style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px"><strong>'+esc(fmt(o.observed_at))+'</strong>'+(o.observed_by_name?' · '+esc(o.observed_by_name):'')+'<br>'+esc(details.join(' · ')||'-')+(o.note?'<br>'+esc(o.note):'')+'</div>';
+          html+='<div class="muted" style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px"><strong>'+esc(fmt(o.observed_at))+'</strong>'+(o.observed_by_name?' · '+esc(o.observed_by_name):'')+'<br>'+esc(details.join(' · ')||'-')+(o.note?'<br>'+esc(o.note):'');
+          if(o.photo_url) html+='<br><a href="'+esc(o.photo_url)+'" target="_blank" rel="noopener"><img src="'+esc(o.photo_url)+'" alt="Fotografija rane" style="margin-top:8px;max-width:220px;max-height:180px;border-radius:12px;border:1px solid var(--border);object-fit:cover"></a>';
+          html+='</div>';
         }
         html+='</div>';
       }
@@ -66,7 +75,10 @@
     for(var i=0;i<obs.length;i++)if(!obs[i].__bound)obs[i].onclick=function(){
       var id=this.getAttribute('data-id'); var btn=this; btn.disabled=true; btn.textContent='Spremam...';
       function cls(c){var n=document.querySelector('.'+c+'[data-id="'+id+'"]');return n?n.value:'';}
-      api('/api/care/wounds/'+encodeURIComponent(id)+'/observations',{method:'POST',body:{size_text:cls('wSize'),exudate:cls('wExudate'),surrounding_skin:cls('wSkin'),pain_score:cls('wPain'),note:cls('wNote')}}).then(function(){renderedProfileId='';busyKey='';renderProfile(patientId,true);}).catch(function(e){alert('Greška: '+(e.message||e));btn.disabled=false;btn.textContent='Dodaj zapažanje';});
+      var photo=document.querySelector('.wPhoto[data-id="'+id+'"]'); var file=photo&&photo.files&&photo.files[0]?photo.files[0]:null;
+      uploadImage(file).then(function(url){
+        return api('/api/care/wounds/'+encodeURIComponent(id)+'/observations',{method:'POST',body:{size_text:cls('wSize'),exudate:cls('wExudate'),surrounding_skin:cls('wSkin'),pain_score:cls('wPain'),note:cls('wNote'),photo_url:url}});
+      }).then(function(){renderedProfileId='';busyKey='';renderProfile(patientId,true);}).catch(function(e){alert('Greška: '+(e.message||e));btn.disabled=false;btn.textContent='Dodaj zapažanje';});
     };
     for(var j=0;j<obs.length;j++)obs[j].__bound=true;
     var close=document.querySelectorAll('.closeWound');
@@ -85,7 +97,7 @@
     api('/api/care/patients/'+encodeURIComponent(patientId)+'/wounds').then(function(data){
       var v=$('#view'); if(!v)return; removeCards();
       var card=document.createElement('div'); card.className='card'; card.id='woundsCard';
-      card.innerHTML='<h3>Rane</h3><p class="muted">Aktivne rane i kronološka zapažanja. Fotografije ćemo dodati kasnije kao poseban sigurniji korak.</p>'+ 
+      card.innerHTML='<h3>Rane</h3><p class="muted">Aktivne rane, fotografije i kronološka zapažanja.</p>'+ 
         '<div class="grid cols-3"><div><label>Naziv</label><input id="woundTitle" placeholder="npr. Sakrum II stupanj"></div><div><label>Lokacija</label><input id="woundLocation" placeholder="npr. sakrum, lijeva peta"></div><div><label>Tip rane</label><input id="woundType" placeholder="npr. dekubitus, kirurška, ulkus"></div></div>'+ 
         '<div style="margin-top:10px"><button class="btn" id="addWound" type="button">Dodaj ranu</button></div><div style="margin-top:12px">'+woundListHtml(data.items||[],data.observations||[],true)+'</div>';
       var therapy=$('#therapyCard'); var care=$('#carePlanCard'); var qr=$('#realScanCard');
@@ -103,7 +115,7 @@
     api('/api/care/patients/'+encodeURIComponent(patientId)+'/wounds').then(function(data){
       var v=$('#view'); if(!v)return; var ex=$('#scanWoundsCard'); if(ex&&ex.parentNode)ex.parentNode.removeChild(ex);
       var card=document.createElement('div'); card.className='card'; card.id='scanWoundsCard';
-      card.innerHTML='<h3>Aktivne rane</h3><p class="muted">Provjeri prije završetka njege. Detaljna zapažanja se unose na profilu pacijenta.</p>'+woundListHtml(data.items||[],data.observations||[],false);
+      card.innerHTML='<h3>Aktivne rane</h3><p class="muted">Provjeri prije završetka njege. Detaljna zapažanja i fotografije se unose na profilu pacijenta.</p>'+woundListHtml(data.items||[],data.observations||[],false);
       var cards=v.querySelectorAll('.card'); if(cards.length>1)v.insertBefore(card,cards[1]); else v.appendChild(card);
       renderedScanId=patientId;
     }).catch(function(e){console.warn('[wounds-addon] scan failed',e);}).then(function(){if(busyKey===key)busyKey='';});
