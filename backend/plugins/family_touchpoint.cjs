@@ -4,6 +4,7 @@ const setupHomecareCarePlan = require('./homecare_careplan.cjs');
 const setupHomecareReports = require('./homecare_reports.cjs');
 const setupHomecareTherapy = require('./homecare_therapy.cjs');
 const setupHomecareWounds = require('./homecare_wounds.cjs');
+const setupHomecareSchedule = require('./homecare_schedule.cjs');
 
 module.exports = function setupFamilyTouchpoint(opts = {}) {
   const { app, pool, auth } = opts;
@@ -16,6 +17,7 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
   setupHomecareReports(opts);
   setupHomecareTherapy(opts);
   setupHomecareWounds(opts);
+  setupHomecareSchedule(opts);
 
   function tenantOf(req){ return Number(req?.user?.tenant_id || req?.tenant_id || 1); }
   function userIdOf(req){ return Number(req?.user?.id || req?.user?.user_id || 0) || null; }
