@@ -12,10 +12,13 @@
   function dateOnly(v){if(!v)return '-';try{return new Date(v).toLocaleDateString('hr-HR');}catch(e){return String(v);}}
   function full(p){return String((p.first_name||'')+' '+(p.last_name||'')).trim()||'Pacijent';}
   function setTitle(t){var c=$('#crumbs');if(c)c.textContent=t;document.title='Ernos Zdravstvena Njega - '+t;}
-  function ensureSafetyLoaded(){if(window.__ernosPatientSafetyLoading||document.querySelector('script[src^="/patient-safety-addon.js"]'))return;window.__ernosPatientSafetyLoading=true;var s=document.createElement('script');s.src='/patient-safety-addon.js?v=20260708-1';s.onload=function(){window.__ernosPatientSafetyLoading=false;};s.onerror=function(){window.__ernosPatientSafetyLoading=false;console.warn('[patient-summary-addon] safety load failed');};document.head.appendChild(s);}
+  function loadAddon(src,flag,label){if(window[flag]||document.querySelector('script[src^="'+src.split('?')[0]+'"]'))return;window[flag]=true;var s=document.createElement('script');s.src=src;s.onload=function(){window[flag]=false;};s.onerror=function(){window[flag]=false;console.warn('[patient-summary-addon] '+label+' load failed');};document.head.appendChild(s);}
+  function ensureSafetyLoaded(){loadAddon('/patient-safety-addon.js?v=20260708-1','__ernosPatientSafetyLoading','safety');}
+  function ensureAlertsLoaded(){loadAddon('/alerts-addon.js?v=20260708-1','__ernosAlertsLoading','alerts');}
+  function ensureAddons(){ensureSafetyLoaded();ensureAlertsLoaded();}
 
   function ensureProfileButton(){
-    ensureSafetyLoaded();
+    ensureAddons();
     var route=(location.hash||'').split('?')[0]; if(route!=='#patient')return;
     var id=params().get('id')||''; if(!id||$('#patientSummaryBtn'))return;
     var target=$('#realScanCard')||$('#patientEditCard')||$('#therapyCard')||$('#carePlanCard');
@@ -59,7 +62,7 @@
   function visitsBlock(data){return simpleList(((data&&data.items)||[]).slice(0,8),function(v){var status=v.finished_at?'Završeno':'U tijeku';var parts=[];if(v.performed_procedures)parts.push(v.performed_procedures);if(v.care_plan_done)parts.push('Plan: '+v.care_plan_done);if(v.therapy_done)parts.push('Terapija: '+v.therapy_done);if(v.wound_note)parts.push('Rana: '+v.wound_note);return '<div style="border:1px solid var(--border);border-radius:12px;padding:10px"><strong>'+esc(status)+'</strong><div class="muted">Početak: '+esc(fmt(v.started_at))+' · Završetak: '+esc(fmt(v.finished_at))+'</div>'+(parts.length?'<div>'+esc(parts.join(' · '))+'</div>':'')+(v.finish_note||v.start_note?'<div class="muted">'+esc(v.finish_note||v.start_note)+'</div>':'')+'</div>';},'Nema evidentiranih posjeta.');}
 
   function renderSummary(id){
-    ensureSafetyLoaded();
+    ensureAddons();
     var view=$('#view'); if(!view||!id)return; setTitle('Sažetak pacijenta'); renderedKey=id;
     view.innerHTML='<div class="card"><h2>Sažetak pacijenta</h2><p class="muted">Učitavanje...</p></div>';
     Promise.all([
@@ -78,7 +81,7 @@
     }).catch(function(err){view.innerHTML='<div class="alert err">Greška: '+esc(err.message||err)+'</div>';});
   }
 
-  function run(){ensureProfileButton();var route=(location.hash||'').split('?')[0];if(route==='#patient-summary'){var id=params().get('id')||'';if(id&&renderedKey!==id)renderSummary(id);}}
+  function run(){ensureAddons();ensureProfileButton();var route=(location.hash||'').split('?')[0];if(route==='#patient-summary'){var id=params().get('id')||'';if(id&&renderedKey!==id)renderSummary(id);}}
   function schedule(){if(timer)clearTimeout(timer);timer=setTimeout(function(){timer=null;run();},250);}
   window.addEventListener('hashchange',function(){renderedKey='';schedule();});
   document.addEventListener('DOMContentLoaded',schedule);
