@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Ernos logo">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4E6E81"/>
+      <stop offset="1" stop-color="#7BA297"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#g)"/>
+  <path d="M70 128c0-34 26-60 61-60 22 0 41 10 52 26l-26 18c-6-8-15-13-27-13-17 0-29 12-29 29s12 29 31 29c12 0 22-5 29-14l25 18c-12 17-32 27-56 27-35 0-60-26-60-60Z" fill="#fff" opacity=".96"/>
+  <path d="M83 77h82v29h-50v17h45v27h-45v23h52v29H83V77Z" fill="#fff"/>
+  <path d="M187 62c9 0 16 7 16 16s-7 16-16 16-16-7-16-16 7-16 16-16Z" fill="#EAF1F4" opacity=".95"/>
+</svg>
