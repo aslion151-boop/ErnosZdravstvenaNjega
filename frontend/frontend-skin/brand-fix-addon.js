@@ -1,7 +1,17 @@
 /* Ernos Zdravstvena Njega - brand cleanup */
 (function(){
   function $(s){return document.querySelector(s);}
+  function loadTasks(){
+    if(window.__ernosTasksLoading||document.querySelector('script[src^="/tasks-addon.js"]'))return;
+    window.__ernosTasksLoading=true;
+    var s=document.createElement('script');
+    s.src='/tasks-addon.js?v=20260720-1';
+    s.onload=function(){window.__ernosTasksLoading=false;};
+    s.onerror=function(){window.__ernosTasksLoading=false;console.warn('[brand-fix] tasks load failed');};
+    document.head.appendChild(s);
+  }
   function cleanHeader(){
+    loadTasks();
     var badge=$('#userBadge');
     if(badge){
       var tags=badge.querySelectorAll('.tag');
