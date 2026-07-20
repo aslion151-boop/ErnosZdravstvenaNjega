@@ -50,6 +50,23 @@
     '</div>';
   }
 
+  function plannedVisitCard(data,isOpen){
+    var pv=(data&&data.planned_visit)||null;
+    var open=(data&&data.open_visit)||null;
+    var id=(open&&open.planned_visit_id)||(pv&&pv.id)||'';
+    if(!pv && !id) return '';
+    var title=pv?(pv.visit_type||'Planirana posjeta'):'Planirana posjeta';
+    var when=pv?fmt(pv.planned_for):'';
+    var windowText=pv&&pv.window_text?pv.window_text:'';
+    var instructions=pv&&pv.instructions?pv.instructions:'';
+    return '<div style="margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff" id="plannedVisitBox" data-id="'+esc(id)+'">'+
+      '<h3 style="margin-top:0">Planirana posjeta</h3>'+ 
+      '<p><strong>'+esc(title)+'</strong>'+((when&&when!=='-')?'<br><span class="muted">Vrijeme: '+esc(when)+'</span>':'')+(windowText?'<br><span class="muted">Okvir: '+esc(windowText)+'</span>':'')+'</p>'+ 
+      (instructions?'<p class="muted">'+esc(instructions)+'</p>':'')+
+      '<label style="display:flex;align-items:flex-start;gap:10px;margin:0;font-weight:750"><input id="usePlannedVisit" type="checkbox" checked style="width:auto;min-height:0;margin-top:3px"> <span>'+(isOpen?'Označi ovu planiranu posjetu kao odrađenu kod završetka njege':'Poveži početak njege s ovom planiranom posjetom')+'</span></label>'+ 
+    '</div>';
+  }
+
   function selectedProcedures(){
     var out=[]; var nodes=document.querySelectorAll('.careProc:checked');
     for(var i=0;i<nodes.length;i++) out.push(nodes[i].value);
@@ -60,6 +77,19 @@
     var out=[]; var nodes=document.querySelectorAll('.carePlanDone:checked');
     for(var i=0;i<nodes.length;i++) out.push(nodes[i].value);
     return out.join(', ');
+  }
+
+  function selectedTherapyDone(){
+    var out=[]; var nodes=document.querySelectorAll('.therapyDone:checked');
+    for(var i=0;i<nodes.length;i++) out.push(nodes[i].value);
+    return out.join(', ');
+  }
+
+  function selectedPlannedVisitId(){
+    var box=$('#plannedVisitBox'); var cb=$('#usePlannedVisit');
+    if(!box || (cb && !cb.checked)) return null;
+    var id=Number(box.getAttribute('data-id')||0);
+    return id||null;
   }
 
   function val(id){ var n=document.getElementById(id); return n?n.value:''; }
@@ -97,20 +127,21 @@
       view.innerHTML='<div class="card"><h2>QR/NFC scan</h2><p class="muted">Učitavanje...</p></div>';
       api('/api/care/scan/'+encodeURIComponent(code)).then(function(data){
         var p=data.patient||{}; var open=data.open_visit; var isOpen=!!open;
+        var plannedHtml=plannedVisitCard(data,isOpen);
         var procHtml=isOpen?procedureChecklist():'';
         var procDesc=isOpen?procedureDescriptionField():'';
         var clinicalHtml=isOpen?clinicalFields():'';
         var familyHtml=isOpen?familyNotifyField(p):'';
         view.innerHTML='<div class="card"><h2>'+esc(full(p))+'</h2><p class="muted">'+esc(p.address||'')+'</p></div>'+ 
           '<div class="card"><h3>Status njege</h3><p>'+(isOpen?'<strong style="color:var(--ok)">Njega je započeta</strong><br><span class="muted">Početak: '+esc(fmt(open.started_at))+' · '+esc(open.started_by_name||'')+'</span>':'<strong>Njega nije započeta</strong>')+'</p>'+ 
-          procHtml+procDesc+clinicalHtml+familyHtml+
+          plannedHtml+procHtml+procDesc+clinicalHtml+familyHtml+
           '<label style="margin-top:12px">Dodatna napomena</label><textarea id="visitNote" rows="3" placeholder="Opcionalno"></textarea>'+ 
           '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="toggleVisit" type="button">'+(isOpen?'Završetak njege':'Početak njege')+'</button><a class="btn ghost" href="#patient?id='+esc(p.id)+'">Profil pacijenta</a></div><div id="scanMsg" class="muted" style="margin-top:8px"></div></div>';
         var btn=$('#toggleVisit');
         if(btn)btn.onclick=function(){
-          var note=$('#visitNote')?$('#visitNote').value:''; var msg=$('#scanMsg'); var procedures=isOpen?selectedProcedures():''; var carePlanDone=isOpen?selectedCarePlanDone():'';
+          var note=$('#visitNote')?$('#visitNote').value:''; var msg=$('#scanMsg'); var procedures=isOpen?selectedProcedures():''; var carePlanDone=isOpen?selectedCarePlanDone():''; var therapyDone=isOpen?selectedTherapyDone():''; var plannedVisitId=selectedPlannedVisitId();
           btn.disabled=true; btn.textContent=isOpen?'Završavam...':'Započinjem...';
-          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,procedures:procedures,procedure_note:val('procedureNote'),care_plan_done:carePlanDone,notify_family:checked('notifyFamily'),bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
+          api('/api/care/scan/'+encodeURIComponent(code)+'/toggle',{method:'POST',body:{note:note,planned_visit_id:plannedVisitId,procedures:procedures,procedure_note:val('procedureNote'),care_plan_done:carePlanDone,therapy_done:therapyDone,notify_family:checked('notifyFamily'),bp:val('visitBp'),pulse:val('visitPulse'),temperature:val('visitTemp'),spo2:val('visitSpo2'),pain_score:val('visitPain'),wound_note:val('visitWound')}}).then(function(r){ if(msg)msg.textContent=(r.action==='IN'?'Njega započeta.':'Njega završena.'); load(); }).catch(function(err){ if(msg)msg.textContent='Greška: '+(err.message||err); btn.disabled=false; btn.textContent=isOpen?'Završetak njege':'Početak njege'; });
         };
       }).catch(function(err){ view.innerHTML='<div class="alert err">Greška: '+esc(err.message||err)+'</div>'; });
     }
@@ -173,8 +204,11 @@
     var procs=v.performed_procedures||'';
     var desc=v.procedure_note||'';
     var plan=v.care_plan_done||'';
+    var therapy=v.therapy_done||'';
     var html='<div>'+esc(procs||'-')+'</div>';
     if(plan) html+='<div class="muted" style="margin-top:4px"><strong>Iz plana odrađeno:</strong> '+esc(plan)+'</div>';
+    if(therapy) html+='<div class="muted" style="margin-top:4px"><strong>Terapija odrađena:</strong> '+esc(therapy)+'</div>';
+    if(v.planned_visit_id) html+='<div class="muted" style="margin-top:4px"><strong>Planirana posjeta:</strong> #'+esc(v.planned_visit_id)+'</div>';
     if(desc) html+='<div class="muted" style="margin-top:4px"><strong>Opis:</strong> '+esc(desc)+'</div>';
     return html;
   }
@@ -195,8 +229,8 @@
     '</tr>';
   }
 
-  function renderVisitHistory(patientId, force){
-    var view=$('#view'); if(!view || !patientId) return;
+  function renderVisitHistory(patientId,force){
+    if(!patientId) return;
     if(!force && renderedVisitsId===patientId && $('#visitHistoryCard')) return;
     if(visitsLoading) return;
     var active=document.activeElement;
