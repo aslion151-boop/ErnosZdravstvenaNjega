@@ -13,9 +13,10 @@
   function full(p){return String((p.first_name||'')+' '+(p.last_name||'')).trim()||'Pacijent';}
   function setTitle(t){var c=$('#crumbs');if(c)c.textContent=t;document.title='Ernos Zdravstvena Njega - '+t;}
   function loadAddon(src,flag,label){if(window[flag]||document.querySelector('script[src^="'+src.split('?')[0]+'"]'))return;window[flag]=true;var s=document.createElement('script');s.src=src;s.onload=function(){window[flag]=false;};s.onerror=function(){window[flag]=false;console.warn('[patient-summary-addon] '+label+' load failed');};document.head.appendChild(s);}
+  function ensureBrandLoaded(){loadAddon('/brand-fix-addon.js?v=20260720-1','__ernosBrandFixLoading','brand');}
   function ensureSafetyLoaded(){loadAddon('/patient-safety-addon.js?v=20260708-1','__ernosPatientSafetyLoading','safety');}
   function ensureAlertsLoaded(){loadAddon('/alerts-addon.js?v=20260708-1','__ernosAlertsLoading','alerts');}
-  function ensureAddons(){ensureSafetyLoaded();ensureAlertsLoaded();}
+  function ensureAddons(){ensureBrandLoaded();ensureSafetyLoaded();ensureAlertsLoaded();}
 
   function ensureProfileButton(){
     ensureAddons();
