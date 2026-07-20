@@ -33,6 +33,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
     const name = String(((patient && patient.first_name) || '') + ' ' + ((patient && patient.last_name) || '')).trim() || 'pacijenta';
     parts.push('Njega za ' + name + ' je završena.');
     if (b.care_plan_done) parts.push('Odrađeno iz plana njege: ' + clean(b.care_plan_done, 800) + '.');
+    if (b.therapy_done) parts.push('Terapija odrađena: ' + clean(b.therapy_done, 800) + '.');
     if (b.procedures) parts.push('Postupci: ' + clean(b.procedures, 800) + '.');
     if (b.bp || b.pulse || b.temperature || b.spo2 || b.pain_score) {
       const clinical = [];
@@ -72,6 +73,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
         id BIGSERIAL PRIMARY KEY,
         tenant_id INT NOT NULL DEFAULT 1,
         patient_id BIGINT NOT NULL,
+        planned_visit_id BIGINT,
         started_by BIGINT,
         started_by_name TEXT NOT NULL DEFAULT '',
         started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -83,6 +85,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
         performed_procedures TEXT NOT NULL DEFAULT '',
         procedure_note TEXT NOT NULL DEFAULT '',
         care_plan_done TEXT NOT NULL DEFAULT '',
+        therapy_done TEXT NOT NULL DEFAULT '',
         bp TEXT NOT NULL DEFAULT '',
         pulse TEXT NOT NULL DEFAULT '',
         temperature TEXT NOT NULL DEFAULT '',
@@ -96,9 +99,11 @@ module.exports = function setupHomecareCheckins(opts = {}) {
         family_notification_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS planned_visit_id BIGINT;
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS performed_procedures TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS procedure_note TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS care_plan_done TEXT NOT NULL DEFAULT '';
+      ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS therapy_done TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS bp TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS pulse TEXT NOT NULL DEFAULT '';
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS temperature TEXT NOT NULL DEFAULT '';
@@ -112,6 +117,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       ALTER TABLE care_visits ADD COLUMN IF NOT EXISTS family_notification_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_care_visits_patient ON care_visits(patient_id, started_at DESC);
       CREATE INDEX IF NOT EXISTS idx_care_visits_open ON care_visits(patient_id) WHERE finished_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_care_visits_planned ON care_visits(planned_visit_id) WHERE planned_visit_id IS NOT NULL;
     `);
   }
   setup().catch(e => console.error('[homecare_checkins] setup failed', e));
@@ -123,6 +129,22 @@ module.exports = function setupHomecareCheckins(opts = {}) {
     const code = makeCode();
     const saved = await pool.query('UPDATE patients SET scan_code=$1, updated_at=NOW() WHERE tenant_id=$2 AND id=$3 AND active=TRUE RETURNING scan_code', [code, tenantId, patientId]);
     return saved.rows[0] && saved.rows[0].scan_code;
+  }
+
+  async function nearestPlannedVisit(tenantId, patientId) {
+    try {
+      const r = await pool.query(
+        `SELECT id, planned_for, window_text, visit_type, instructions, status
+         FROM planned_visits
+         WHERE tenant_id=$1 AND patient_id=$2 AND status='planned'
+         ORDER BY ABS(EXTRACT(EPOCH FROM (COALESCE(planned_for, NOW()) - NOW()))) ASC, id DESC
+         LIMIT 1`,
+        [tenantId, patientId]
+      );
+      return r.rows[0] || null;
+    } catch (_e) {
+      return null;
+    }
   }
 
   app.get('/api/care/patients/:id/code', requireUser, async (req, res) => {
@@ -147,7 +169,7 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       const patient = await pool.query('SELECT id FROM patients WHERE tenant_id=$1 AND id=$2 AND active=TRUE LIMIT 1', [tenantId, patientId]);
       if (!patient.rows.length) return res.status(404).json({ error: 'Patient not found' });
       const rows = await pool.query(
-        'SELECT id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note, performed_procedures, procedure_note, care_plan_done, bp, pulse, temperature, spo2, pain_score, wound_note, family_notification_requested, family_notification_status, family_notification_to, family_notification_message, family_notification_at FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
+        'SELECT id, planned_visit_id, started_by_name, started_at, finished_by_name, finished_at, start_note, finish_note, performed_procedures, procedure_note, care_plan_done, therapy_done, bp, pulse, temperature, spo2, pain_score, wound_note, family_notification_requested, family_notification_status, family_notification_to, family_notification_message, family_notification_at FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 ORDER BY started_at DESC LIMIT 50',
         [tenantId, patientId]
       );
       res.json({ items: rows.rows });
@@ -163,8 +185,9 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       const code = clean(req.params.code, 120);
       const p = await pool.query('SELECT id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes FROM patients WHERE tenant_id=$1 AND scan_code=$2 AND active=TRUE LIMIT 1', [tenantId, code]);
       if (!p.rows.length) return res.status(404).json({ error: 'Patient not found' });
-      const open = await pool.query('SELECT id, started_by_name, started_at, start_note FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 AND finished_at IS NULL ORDER BY started_at DESC LIMIT 1', [tenantId, p.rows[0].id]);
-      res.json({ patient: p.rows[0], open_visit: open.rows[0] || null });
+      const open = await pool.query('SELECT id, planned_visit_id, started_by_name, started_at, start_note FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 AND finished_at IS NULL ORDER BY started_at DESC LIMIT 1', [tenantId, p.rows[0].id]);
+      const planned = await nearestPlannedVisit(tenantId, p.rows[0].id);
+      res.json({ patient: p.rows[0], open_visit: open.rows[0] || null, planned_visit: planned });
     } catch (e) {
       console.error('[homecare_checkins] scan failed', e);
       res.status(500).json({ error: 'Server error', detail: e.message });
@@ -179,20 +202,30 @@ module.exports = function setupHomecareCheckins(opts = {}) {
       if (!p.rows.length) return res.status(404).json({ error: 'Patient not found' });
       const patient = p.rows[0];
       const patientId = patient.id;
-      const open = await pool.query('SELECT id FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 AND finished_at IS NULL ORDER BY started_at DESC LIMIT 1', [tenantId, patientId]);
+      const open = await pool.query('SELECT id, planned_visit_id FROM care_visits WHERE tenant_id=$1 AND patient_id=$2 AND finished_at IS NULL ORDER BY started_at DESC LIMIT 1', [tenantId, patientId]);
       if (open.rows.length) {
         const b = req.body || {};
         const notifyFamily = !!b.notify_family;
         const familyTo = notifyFamily ? clean(((patient.family_contact_name || '') + ' ' + (patient.family_contact_phone || '')).trim(), 300) : '';
         const familyMessage = notifyFamily ? buildFamilyMessage(patient, b) : '';
         const familyStatus = notifyFamily ? 'prepared' : '';
+        const plannedVisitId = Number(b.planned_visit_id || open.rows[0].planned_visit_id || 0) || null;
         const done = await pool.query(
-          'UPDATE care_visits SET finished_by=$1, finished_by_name=$2, finish_note=$3, performed_procedures=$4, procedure_note=$5, care_plan_done=$6, bp=$7, pulse=$8, temperature=$9, spo2=$10, pain_score=$11, wound_note=$12, family_notification_requested=$13, family_notification_status=$14, family_notification_to=$15, family_notification_message=$16, family_notification_at=CASE WHEN $13 THEN NOW() ELSE family_notification_at END, finished_at=NOW() WHERE tenant_id=$17 AND id=$18 RETURNING id, started_at, finished_at, performed_procedures, procedure_note, care_plan_done, bp, pulse, temperature, spo2, pain_score, wound_note, family_notification_requested, family_notification_status, family_notification_to, family_notification_message, family_notification_at',
-          [userIdOf(req), userNameOf(req), clean(b.note, 1000), clean(b.procedures, 1500), clean(b.procedure_note, 2000), clean(b.care_plan_done, 2000), clean(b.bp, 40), clean(b.pulse, 40), clean(b.temperature, 40), clean(b.spo2, 40), clean(b.pain_score, 40), clean(b.wound_note, 1000), notifyFamily, familyStatus, familyTo, clean(familyMessage, 2500), tenantId, open.rows[0].id]
+          'UPDATE care_visits SET planned_visit_id=COALESCE($1, planned_visit_id), finished_by=$2, finished_by_name=$3, finish_note=$4, performed_procedures=$5, procedure_note=$6, care_plan_done=$7, therapy_done=$8, bp=$9, pulse=$10, temperature=$11, spo2=$12, pain_score=$13, wound_note=$14, family_notification_requested=$15, family_notification_status=$16, family_notification_to=$17, family_notification_message=$18, family_notification_at=CASE WHEN $15 THEN NOW() ELSE family_notification_at END, finished_at=NOW() WHERE tenant_id=$19 AND id=$20 RETURNING id, planned_visit_id, started_at, finished_at, performed_procedures, procedure_note, care_plan_done, therapy_done, bp, pulse, temperature, spo2, pain_score, wound_note, family_notification_requested, family_notification_status, family_notification_to, family_notification_message, family_notification_at',
+          [plannedVisitId, userIdOf(req), userNameOf(req), clean(b.note, 1000), clean(b.procedures, 1500), clean(b.procedure_note, 2000), clean(b.care_plan_done, 2000), clean(b.therapy_done, 2000), clean(b.bp, 40), clean(b.pulse, 40), clean(b.temperature, 40), clean(b.spo2, 40), clean(b.pain_score, 40), clean(b.wound_note, 1000), notifyFamily, familyStatus, familyTo, clean(familyMessage, 2500), tenantId, open.rows[0].id]
         );
+        if (plannedVisitId) {
+          try {
+            await pool.query('UPDATE planned_visits SET status=$1, updated_at=NOW() WHERE tenant_id=$2 AND id=$3 AND patient_id=$4', ['done', tenantId, plannedVisitId, patientId]);
+          } catch (e) {
+            console.warn('[homecare_checkins] planned visit status update failed', e.message);
+          }
+        }
         return res.json({ ok: true, action: 'OUT', visit: done.rows[0] });
       }
-      const started = await pool.query('INSERT INTO care_visits (tenant_id, patient_id, started_by, started_by_name, start_note) VALUES ($1,$2,$3,$4,$5) RETURNING id, started_at', [tenantId, patientId, userIdOf(req), userNameOf(req), clean(req.body && req.body.note, 1000)]);
+      const b = req.body || {};
+      const plannedVisitId = Number(b.planned_visit_id || 0) || null;
+      const started = await pool.query('INSERT INTO care_visits (tenant_id, patient_id, planned_visit_id, started_by, started_by_name, start_note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, planned_visit_id, started_at', [tenantId, patientId, plannedVisitId, userIdOf(req), userNameOf(req), clean(b.note, 1000)]);
       res.json({ ok: true, action: 'IN', visit: started.rows[0] });
     } catch (e) {
       console.error('[homecare_checkins] toggle failed', e);
