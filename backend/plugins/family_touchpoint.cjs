@@ -25,6 +25,8 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
   function userIdOf(req){ return Number(req?.user?.id || req?.user?.user_id || 0) || null; }
   function clean(v, max=500){ return String(v ?? '').trim().slice(0, max); }
 
+  const patientFields = 'id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, allergies, diagnoses, risks, mobility_note, access_note, active, created_at, updated_at';
+
   async function ensureTables(){
     await pool.query(`
       CREATE TABLE IF NOT EXISTS patients (
@@ -43,6 +45,11 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS allergies TEXT NOT NULL DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS diagnoses TEXT NOT NULL DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS risks TEXT NOT NULL DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS mobility_note TEXT NOT NULL DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS access_note TEXT NOT NULL DEFAULT '';
       CREATE INDEX IF NOT EXISTS idx_patients_tenant_active ON patients(tenant_id, active, last_name, first_name);
     `);
   }
@@ -52,7 +59,7 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
     try{
       const tenant_id = tenantOf(req);
       const { rows } = await pool.query(
-        `SELECT id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, active, created_at, updated_at
+        `SELECT ${patientFields}
          FROM patients WHERE tenant_id=$1 AND active=TRUE ORDER BY last_name ASC, first_name ASC, id DESC`,
         [tenant_id]
       );
@@ -68,10 +75,10 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
       const last_name = clean(b.last_name,120);
       if(!first_name || !last_name) return res.status(400).json({error:'Ime i prezime su obavezni'});
       const { rows } = await pool.query(
-        `INSERT INTO patients (tenant_id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         RETURNING id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, active, created_at, updated_at`,
-        [tenant_id, first_name, last_name, clean(b.date_of_birth,20)||null, clean(b.address,300), clean(b.phone,80), clean(b.family_contact_name,160), clean(b.family_contact_phone,80), clean(b.notes,1500), userIdOf(req)]
+        `INSERT INTO patients (tenant_id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, allergies, diagnoses, risks, mobility_note, access_note, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         RETURNING ${patientFields}`,
+        [tenant_id, first_name, last_name, clean(b.date_of_birth,20)||null, clean(b.address,300), clean(b.phone,80), clean(b.family_contact_name,160), clean(b.family_contact_phone,80), clean(b.notes,1500), clean(b.allergies,1000), clean(b.diagnoses,1000), clean(b.risks,1000), clean(b.mobility_note,1000), clean(b.access_note,1000), userIdOf(req)]
       );
       res.json({ok:true,item:rows[0]});
     }catch(e){ console.error('[patients] create failed', e); res.status(500).json({error:'Server error', detail:e.message}); }
@@ -87,10 +94,10 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
       const last_name = clean(b.last_name,120);
       if(!first_name || !last_name) return res.status(400).json({error:'Ime i prezime su obavezni'});
       const { rows } = await pool.query(
-        `UPDATE patients SET first_name=$1, last_name=$2, date_of_birth=$3, address=$4, phone=$5, family_contact_name=$6, family_contact_phone=$7, notes=$8, updated_at=NOW()
-         WHERE tenant_id=$9 AND id=$10 AND active=TRUE
-         RETURNING id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, active, created_at, updated_at`,
-        [first_name, last_name, clean(b.date_of_birth,20)||null, clean(b.address,300), clean(b.phone,80), clean(b.family_contact_name,160), clean(b.family_contact_phone,80), clean(b.notes,1500), tenant_id, id]
+        `UPDATE patients SET first_name=$1, last_name=$2, date_of_birth=$3, address=$4, phone=$5, family_contact_name=$6, family_contact_phone=$7, notes=$8, allergies=$9, diagnoses=$10, risks=$11, mobility_note=$12, access_note=$13, updated_at=NOW()
+         WHERE tenant_id=$14 AND id=$15 AND active=TRUE
+         RETURNING ${patientFields}`,
+        [first_name, last_name, clean(b.date_of_birth,20)||null, clean(b.address,300), clean(b.phone,80), clean(b.family_contact_name,160), clean(b.family_contact_phone,80), clean(b.notes,1500), clean(b.allergies,1000), clean(b.diagnoses,1000), clean(b.risks,1000), clean(b.mobility_note,1000), clean(b.access_note,1000), tenant_id, id]
       );
       if(!rows.length) return res.status(404).json({error:'Patient not found'});
       res.json({ok:true,item:rows[0]});
