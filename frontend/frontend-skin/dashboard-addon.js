@@ -10,11 +10,13 @@
   function fmt(v){if(!v)return '-';try{return new Date(v).toLocaleString('hr-HR');}catch(e){return String(v);}}
   function patientName(x){return x.patient_name||String((x.first_name||'')+' '+(x.last_name||'')).trim()||'Pacijent';}
   function setTitle(t){var c=$('#crumbs');if(c)c.textContent=t;document.title='Ernos Zdravstvena Njega - '+t;}
-  function ensurePatientSearchLoaded(){
-    if(window.__ernosPatientSearchLoading||document.querySelector('script[src^="/patient-search-addon.js"]'))return;
-    window.__ernosPatientSearchLoading=true;
-    var s=document.createElement('script');s.src='/patient-search-addon.js?v=20260708-1';s.onload=function(){window.__ernosPatientSearchLoading=false;};s.onerror=function(){window.__ernosPatientSearchLoading=false;console.warn('[dashboard-addon] patient search load failed');};document.head.appendChild(s);
+  function loadAddon(src,flag){
+    if(window[flag]||document.querySelector('script[src^="'+src.split('?')[0]+'"]'))return;
+    window[flag]=true;
+    var s=document.createElement('script');s.src=src;s.onload=function(){window[flag]=false;};s.onerror=function(){window[flag]=false;console.warn('[dashboard-addon] addon load failed',src);};document.head.appendChild(s);
   }
+  function ensurePatientSearchLoaded(){loadAddon('/patient-search-addon.js?v=20260708-1','__ernosPatientSearchLoading');}
+  function ensurePatientSummaryLoaded(){loadAddon('/patient-summary-addon.js?v=20260708-1','__ernosPatientSummaryLoading');}
   function ensureNav(){
     var nav=$('#nav'); if(!nav||$('#navToday'))return;
     var a=document.createElement('a'); a.href='#today'; a.id='navToday'; a.textContent='Danas';
@@ -24,6 +26,7 @@
     var html='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">';
     if(x.scan_url)html+='<a class="btn small" href="'+esc(x.scan_url)+'">Scan</a>';
     if(x.patient_id)html+='<a class="btn small ghost" href="#patient?id='+esc(x.patient_id)+'">Profil</a>';
+    if(x.patient_id)html+='<a class="btn small ghost" href="#patient-summary?id='+esc(x.patient_id)+'">Sažetak</a>';
     html+='</div>'; return html;
   }
   function plannedCard(x){
@@ -53,7 +56,7 @@
     var html='<div style="display:grid;gap:10px">'; for(var i=0;i<items.length;i++)html+=fn(items[i]); html+='</div>'; return html;
   }
   function render(){
-    ensureNav(); ensurePatientSearchLoaded();
+    ensureNav(); ensurePatientSearchLoaded(); ensurePatientSummaryLoaded();
     var route=(location.hash||'').split('?')[0]; if(route!=='#today')return;
     var view=$('#view'); if(!view)return; setTitle('Danas'); rendered=true;
     view.innerHTML='<div class="card"><h2>Danas</h2><p class="muted">Dnevna operativna ploča: planirane posjete, otvorene njege i završene posjete danas.</p><div id="todayStatus" class="muted">Učitavanje...</div></div>';
@@ -71,9 +74,9 @@
       var b=$('#refreshToday'); if(b)b.onclick=function(){rendered=false;render();};
     }).catch(function(err){view.innerHTML='<div class="alert err">Greška: '+esc(err.message||err)+'</div>';});
   }
-  function schedule(){ensureNav(); ensurePatientSearchLoaded(); if(timer)clearTimeout(timer); timer=setTimeout(function(){timer=null;render();},250);}
+  function schedule(){ensureNav(); ensurePatientSearchLoaded(); ensurePatientSummaryLoaded(); if(timer)clearTimeout(timer); timer=setTimeout(function(){timer=null;render();},250);}
   window.addEventListener('hashchange',function(){rendered=false;schedule();});
   document.addEventListener('DOMContentLoaded',schedule);
-  try{new MutationObserver(function(){ensureNav();ensurePatientSearchLoaded();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}
+  try{new MutationObserver(function(){ensureNav();ensurePatientSearchLoaded();ensurePatientSummaryLoaded();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}
   if(document.readyState!=='loading')schedule();
 })();
