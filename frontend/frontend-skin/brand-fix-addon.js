@@ -1,17 +1,20 @@
 /* Ernos Zdravstvena Njega - brand cleanup */
 (function(){
   function $(s){return document.querySelector(s);}
-  function loadTasks(){
-    if(window.__ernosTasksLoading||document.querySelector('script[src^="/tasks-addon.js"]'))return;
-    window.__ernosTasksLoading=true;
+  function loadScriptOnce(src,flag,label){
+    if(window[flag]||document.querySelector('script[src^="'+src.split('?')[0]+'"]'))return;
+    window[flag]=true;
     var s=document.createElement('script');
-    s.src='/tasks-addon.js?v=20260720-1';
-    s.onload=function(){window.__ernosTasksLoading=false;};
-    s.onerror=function(){window.__ernosTasksLoading=false;console.warn('[brand-fix] tasks load failed');};
+    s.src=src;
+    s.onload=function(){window[flag]=false;};
+    s.onerror=function(){window[flag]=false;console.warn('[brand-fix] '+label+' load failed');};
     document.head.appendChild(s);
   }
+  function loadTasks(){loadScriptOnce('/tasks-addon.js?v=20260720-1','__ernosTasksLoading','tasks');}
+  function loadFamilyOutbox(){loadScriptOnce('/family-outbox-addon.js?v=20260720-1','__ernosFamilyOutboxLoading','family outbox');}
   function cleanHeader(){
     loadTasks();
+    loadFamilyOutbox();
     var badge=$('#userBadge');
     if(badge){
       var tags=badge.querySelectorAll('.tag');
