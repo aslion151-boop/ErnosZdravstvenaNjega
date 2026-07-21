@@ -12,9 +12,11 @@
   }
   function loadTasks(){loadScriptOnce('/tasks-addon.js?v=20260720-1','__ernosTasksLoading','tasks');}
   function loadFamilyOutbox(){loadScriptOnce('/family-outbox-addon.js?v=20260720-1','__ernosFamilyOutboxLoading','family outbox');}
+  function loadCareLog(){loadScriptOnce('/care-log-addon.js?v=20260720-1','__ernosCareLogLoading','care log');}
   function cleanHeader(){
     loadTasks();
     loadFamilyOutbox();
+    loadCareLog();
     var badge=$('#userBadge');
     if(badge){
       var tags=badge.querySelectorAll('.tag');
