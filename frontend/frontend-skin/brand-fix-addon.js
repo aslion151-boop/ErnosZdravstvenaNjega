@@ -14,11 +14,13 @@
   function loadFamilyOutbox(){loadScriptOnce('/family-outbox-addon.js?v=20260720-1','__ernosFamilyOutboxLoading','family outbox');}
   function loadCareLog(){loadScriptOnce('/care-log-addon.js?v=20260720-1','__ernosCareLogLoading','care log');}
   function loadIncidents(){loadScriptOnce('/incidents-addon.js?v=20260720-1','__ernosIncidentsLoading','incidents');}
+  function loadSupplies(){loadScriptOnce('/supplies-addon.js?v=20260720-1','__ernosSuppliesLoading','supplies');}
   function cleanHeader(){
     loadTasks();
     loadFamilyOutbox();
     loadCareLog();
     loadIncidents();
+    loadSupplies();
     var badge=$('#userBadge');
     if(badge){
       var tags=badge.querySelectorAll('.tag');
