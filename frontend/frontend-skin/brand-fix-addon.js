@@ -17,6 +17,7 @@
   function loadSupplies(){loadScriptOnce('/supplies-addon.js?v=20260720-1','__ernosSuppliesLoading','supplies');}
   function loadFieldPrep(){loadScriptOnce('/field-prep-addon.js?v=20260720-1','__ernosFieldPrepLoading','field prep');}
   function loadTodayFocus(){loadScriptOnce('/today-focus-addon.js?v=20260720-1','__ernosTodayFocusLoading','today focus');}
+  function loadScanContext(){loadScriptOnce('/scan-context-addon.js?v=20260720-1','__ernosScanContextLoading','scan context');}
   function cleanHeader(){
     loadTasks();
     loadFamilyOutbox();
@@ -25,6 +26,7 @@
     loadSupplies();
     loadFieldPrep();
     loadTodayFocus();
+    loadScanContext();
     var badge=$('#userBadge');
     if(badge){
       var tags=badge.querySelectorAll('.tag');
