@@ -12,6 +12,7 @@ const setupHomecareFamilyOutbox = require('./homecare_family_outbox.cjs');
 const setupHomecareIncidents = require('./homecare_incidents.cjs');
 const setupHomecareSupplies = require('./homecare_supplies.cjs');
 const setupHomecareFieldPrep = require('./homecare_field_prep.cjs');
+const setupHomecareContacts = require('./homecare_contacts.cjs');
 
 module.exports = function setupFamilyTouchpoint(opts = {}) {
   const { app, pool, auth } = opts;
@@ -32,6 +33,7 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
   setupHomecareIncidents(opts);
   setupHomecareSupplies(opts);
   setupHomecareFieldPrep(opts);
+  setupHomecareContacts(opts);
 
   function tenantOf(req){ return Number(req?.user?.tenant_id || req?.tenant_id || 1); }
   function userIdOf(req){ return Number(req?.user?.id || req?.user?.user_id || 0) || null; }
