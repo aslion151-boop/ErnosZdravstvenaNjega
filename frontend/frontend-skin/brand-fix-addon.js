@@ -18,6 +18,7 @@
   function loadFieldPrep(){loadScriptOnce('/field-prep-addon.js?v=20260720-1','__ernosFieldPrepLoading','field prep');}
   function loadTodayFocus(){loadScriptOnce('/today-focus-addon.js?v=20260720-1','__ernosTodayFocusLoading','today focus');}
   function loadScanContext(){loadScriptOnce('/scan-context-addon.js?v=20260720-1','__ernosScanContextLoading','scan context');}
+  function loadScanTemplates(){loadScriptOnce('/scan-templates-addon.js?v=20260720-1','__ernosScanTemplatesLoading','scan templates');}
   function loadContacts(){loadScriptOnce('/contacts-addon.js?v=20260720-1','__ernosContactsLoading','contacts');}
   function cleanHeader(){
     loadTasks();
@@ -28,6 +29,7 @@
     loadFieldPrep();
     loadTodayFocus();
     loadScanContext();
+    loadScanTemplates();
     loadContacts();
     var badge=$('#userBadge');
     if(badge){
