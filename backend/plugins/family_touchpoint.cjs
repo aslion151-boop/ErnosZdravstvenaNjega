@@ -35,9 +35,9 @@ module.exports = function setupFamilyTouchpoint(opts = {}) {
   setupHomecareFieldPrep(opts);
   setupHomecareContacts(opts);
 
-  function tenantOf(req){ return Number(req?.user?.tenant_id || req?.tenant_id || 1); }
-  function userIdOf(req){ return Number(req?.user?.id || req?.user?.user_id || 0) || null; }
-  function clean(v, max=500){ return String(v ?? '').trim().slice(0, max); }
+  function tenantOf(req){ return Number((req.user && req.user.tenant_id) || req.tenant_id || 1); }
+  function userIdOf(req){ return Number((req.user && (req.user.id || req.user.user_id)) || 0) || null; }
+  function clean(v, max=500){ return String(v == null ? '' : v).trim().slice(0, max); }
 
   const patientFields = 'id, first_name, last_name, date_of_birth, address, phone, family_contact_name, family_contact_phone, notes, allergies, diagnoses, risks, mobility_note, access_note, active, created_at, updated_at';
 
