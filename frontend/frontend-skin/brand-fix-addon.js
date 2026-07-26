@@ -1,4 +1,4 @@
-/* Ernos Zdravstvena Njega - remove legacy tenant badge only */
+/* Ernos Zdravstvena Njega - small safe UI cleanup */
 (function(){
   if(window.__ernosMinimalBrandFixLoaded)return;
   window.__ernosMinimalBrandFixLoaded=true;
@@ -20,28 +20,37 @@
     }
   }
 
-  function scheduleClean(){
+  function removeHelperCopy(){
+    var view=document.querySelector('#view');
+    if(!view)return;
+    var texts=[
+      'Lista pacijenata je odmah dostupna. Dodavanje je odvojeno u sidebaru.',
+      'Ovo je zaseban ekran. Upiši osnovno, ostalo možeš dopuniti kasnije.'
+    ];
+    var ps=view.querySelectorAll('p');
+    for(var i=ps.length-1;i>=0;i--){
+      var txt=(ps[i].textContent||'').trim();
+      for(var j=0;j<texts.length;j++){
+        if(txt===texts[j]){
+          try{ps[i].parentNode.removeChild(ps[i]);}catch(e){}
+          break;
+        }
+      }
+    }
+  }
+
+  function run(){
     cleanHeader();
-    setTimeout(cleanHeader,50);
-    setTimeout(cleanHeader,250);
-    setTimeout(cleanHeader,750);
+    removeHelperCopy();
+  }
+
+  function scheduleClean(){
+    run();
+    setTimeout(run,50);
+    setTimeout(run,250);
   }
 
   document.addEventListener('DOMContentLoaded',scheduleClean);
   window.addEventListener('hashchange',scheduleClean);
-  window.addEventListener('storage',scheduleClean);
-
-  try{
-    var obs=new MutationObserver(function(){cleanHeader();});
-    obs.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
-  }catch(e){}
-
-  var n=0;
-  var iv=setInterval(function(){
-    cleanHeader();
-    n++;
-    if(n>40)clearInterval(iv);
-  },250);
-
   if(document.readyState!=='loading')scheduleClean();
 })();
