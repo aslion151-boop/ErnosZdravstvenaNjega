@@ -69,6 +69,7 @@
     if (r === '#dashboard') return 'Početna';
     if (r === '#today') return 'Danas';
     if (r === '#patients') return 'Pacijenti';
+    if (r === '#patient-new') return 'Dodaj pacijenta';
     if (r === '#patient') return 'Profil pacijenta';
     if (r === '#visits') return 'Posjete';
     if (r === '#qr') return 'QR / NFC';
@@ -130,6 +131,7 @@
       ['#dashboard', 'Početna'],
       ['#today', 'Danas'],
       ['#patients', 'Pacijenti'],
+      ['#patient-new', '+ Dodaj pacijenta'],
       ['#visits', 'Posjete'],
       ['#qr', 'QR / NFC'],
       ['#staff', 'Djelatnici'],
@@ -192,19 +194,19 @@
     view.innerHTML = '' +
       '<div class="card" style="padding:24px">' +
         '<div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center">' +
-          '<div><h2 style="margin-bottom:6px">Dobrodošli' + esc(hello) + '</h2><p class="muted" style="max-width:680px">Jednostavna radna ploča za kućnu zdravstvenu njegu. Najčešće radnje su odmah ispod, bez traženja po menijima.</p></div>' +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#patients">+ Pacijent</a><a class="btn ghost" href="#today">Danas</a></div>' +
+          '<div><h2 style="margin-bottom:6px">Dobrodošli' + esc(hello) + '</h2><p class="muted" style="max-width:680px">Jednostavna radna ploča za kućnu zdravstvenu njegu. Pacijenti su odmah dostupni kao lista, a dodavanje pacijenta je odvojeno.</p></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#patient-new">+ Dodaj pacijenta</a><a class="btn ghost" href="#patients">Lista pacijenata</a><a class="btn ghost" href="#today">Danas</a></div>' +
         '</div>' +
       '</div>' +
       '<div class="grid cols-3">' +
-        softCard('Pacijenti', 'Dodavanje, pregled i osnovni podaci pacijenta.', '<a class="btn" href="#patients">Otvori pacijente</a>') +
+        softCard('Pacijenti', 'Odmah dostupna lista svih pacijenata i brzi ulaz u profil.', '<a class="btn" href="#patients">Otvori listu</a>') +
+        softCard('Dodaj pacijenta', 'Zaseban ekran za unos novog pacijenta, bez miješanja s listom.', '<a class="btn ghost" href="#patient-new">Dodaj novog</a>') +
         softCard('Danas', 'Planirane posjete, njega u tijeku i završene posjete za današnji dan.', '<a class="btn ghost" href="#today">Otvori danas</a>') +
-        softCard('QR / NFC', 'Skeniranje ostaje odvojeno i neće se mijenjati bez posebnog testiranja.', '<a class="btn ghost" href="#qr">Otvori upute</a>') +
       '</div>' +
       '<div class="card"><h3>Preporučeni red rada</h3>' +
         '<div class="grid cols-3">' +
-          '<div>' + tag('1', 'ok') + '<p><strong>Provjeri danas</strong><br><span class="muted">Vidi što je planirano i što je već završeno.</span></p></div>' +
-          '<div>' + tag('2', 'warn') + '<p><strong>Otvori pacijenta</strong><br><span class="muted">Provjeri adresu, obitelj i napomene.</span></p></div>' +
+          '<div>' + tag('1', 'ok') + '<p><strong>Otvori listu pacijenata</strong><br><span class="muted">Pacijenti su sada odvojeni od unosa.</span></p></div>' +
+          '<div>' + tag('2', 'warn') + '<p><strong>Dodaj novog po potrebi</strong><br><span class="muted">Nova forma je zasebna stavka u sidebaru.</span></p></div>' +
           '<div>' + tag('3', 'ok') + '<p><strong>Scan QR/NFC</strong><br><span class="muted">Workflow ostaje isti: scan/tap za početak i završetak.</span></p></div>' +
         '</div>' +
       '</div>';
@@ -232,7 +234,7 @@
     wrap.innerHTML = '<div class="empty">Učitavanje...</div>';
     api('/api/patients').then(function (data) {
       var items = data.items || [];
-      if (!items.length) { wrap.innerHTML = '<div class="empty">Još nema pacijenata.</div>'; return; }
+      if (!items.length) { wrap.innerHTML = '<div class="empty">Još nema pacijenata. Klikni “Dodaj pacijenta” u sidebaru.</div>'; return; }
       var rows = '';
       for (var i = 0; i < items.length; i++) rows += patientRow(items[i]);
       wrap.innerHTML = '' +
@@ -245,13 +247,43 @@
     });
   }
 
+  function bindPatientDelete(view) {
+    if (!view || view.dataset.deleteBound === '1') return;
+    view.dataset.deleteBound = '1';
+    view.addEventListener('click', function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest('[data-delete-patient]') : null;
+      if (!btn) return;
+      var id = btn.getAttribute('data-delete-patient');
+      if (!id) return;
+      if (!confirm('Deaktivirati ovog pacijenta?')) return;
+      btn.disabled = true;
+      api('/api/patients/' + encodeURIComponent(id), { method: 'DELETE' }).then(loadPatients).catch(function (err) {
+        alert('Greška: ' + (err.message || err));
+        btn.disabled = false;
+      });
+    });
+  }
+
   function viewPatients() {
     setCrumbs('Pacijenti');
     var view = $('#view');
     if (!view) return;
     view.innerHTML = '' +
-      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Pacijenti</h2><p class="muted">Osnovna evidencija i brzi ulaz u profil pacijenta.</p></div><a class="btn ghost" href="#dashboard">Početna</a></div>' +
-      '<div class="card"><h3>Dodaj pacijenta</h3><p class="muted">Upiši samo ono što znaš sada. Detalje možeš dopuniti kasnije.</p>' +
+      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Pacijenti</h2><p class="muted">Lista pacijenata je odmah dostupna. Dodavanje je odvojeno u sidebaru.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#patient-new">+ Dodaj pacijenta</a><button class="btn ghost" type="button" id="refreshPatients">Osvježi</button></div></div>' +
+      '<div class="card"><h3>Popis pacijenata</h3><div id="patientsList"></div></div>';
+    var refresh = $('#refreshPatients');
+    if (refresh) refresh.addEventListener('click', loadPatients);
+    bindPatientDelete(view);
+    loadPatients();
+  }
+
+  function viewPatientNew() {
+    setCrumbs('Dodaj pacijenta');
+    var view = $('#view');
+    if (!view) return;
+    view.innerHTML = '' +
+      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Dodaj pacijenta</h2><p class="muted">Ovo je sada zaseban ekran. Upiši osnovno, ostalo možeš dopuniti kasnije.</p></div><a class="btn ghost" href="#patients">Natrag na listu</a></div>' +
+      '<div class="card"><h3>Osnovni podaci</h3>' +
         '<form id="patientForm" class="grid cols-3" autocomplete="off">' +
           '<div><label>Ime</label><input name="first_name" required></div>' +
           '<div><label>Prezime</label><input name="last_name" required></div>' +
@@ -261,10 +293,8 @@
           '<div><label>Kontakt obitelji</label><input name="family_contact_name"></div>' +
           '<div><label>Telefon obitelji</label><input name="family_contact_phone"></div>' +
           '<div style="grid-column:1/-1"><label>Napomena</label><textarea name="notes" rows="3" placeholder="Npr. ulaz, kat, važna napomena za posjetu..."></textarea></div>' +
-          '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="submit">Spremi pacijenta</button><button class="btn ghost" type="button" id="refreshPatients">Osvježi</button><span id="patientMsg" class="muted"></span></div>' +
-        '</form></div>' +
-      '<div class="card"><h3>Popis pacijenata</h3><div id="patientsList"></div></div>';
-
+          '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="submit">Spremi pacijenta</button><a class="btn ghost" href="#patients">Odustani</a><span id="patientMsg" class="muted"></span></div>' +
+        '</form></div>';
     var form = $('#patientForm');
     var out = $('#patientMsg');
     if (form) {
@@ -278,8 +308,8 @@
         if (out) out.textContent = '';
         api('/api/patients', { method: 'POST', body: body }).then(function () {
           form.reset();
-          if (out) out.textContent = 'Pacijent spremljen.';
-          loadPatients();
+          if (out) out.textContent = 'Pacijent spremljen. Otvaram listu...';
+          setTimeout(function () { location.hash = '#patients'; }, 500);
         }).catch(function (err) {
           if (out) out.textContent = 'Greška: ' + (err.message || err);
         }).then(function () {
@@ -287,21 +317,6 @@
         });
       });
     }
-    var refresh = $('#refreshPatients');
-    if (refresh) refresh.addEventListener('click', loadPatients);
-    view.addEventListener('click', function (ev) {
-      var btn = ev.target && ev.target.closest ? ev.target.closest('[data-delete-patient]') : null;
-      if (!btn) return;
-      var id = btn.getAttribute('data-delete-patient');
-      if (!id) return;
-      if (!confirm('Deaktivirati ovog pacijenta?')) return;
-      btn.disabled = true;
-      api('/api/patients/' + encodeURIComponent(id), { method: 'DELETE' }).then(loadPatients).catch(function (err) {
-        alert('Greška: ' + (err.message || err));
-        btn.disabled = false;
-      });
-    });
-    loadPatients();
   }
 
   function infoLine(label, value) {
@@ -443,6 +458,7 @@
     if (r === '#login') return viewLogin();
     if (r === '#today') return viewToday();
     if (r === '#patients') return viewPatients();
+    if (r === '#patient-new') return viewPatientNew();
     if (r === '#patient') return viewPatientProfile();
     if (r === '#visits') return viewVisits();
     if (r === '#qr') return viewQr();
