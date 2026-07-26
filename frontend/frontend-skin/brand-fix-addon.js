@@ -1,4 +1,4 @@
-/* Ernos Zdravstvena Njega - remove legacy tenant badge only */
+/* Ernos Zdravstvena Njega - small UI cleanup only */
 (function(){
   if(window.__ernosMinimalBrandFixLoaded)return;
   window.__ernosMinimalBrandFixLoaded=true;
@@ -20,11 +20,37 @@
     }
   }
 
-  function scheduleClean(){
+  function cleanPatientUi(){
+    var navAdd=document.querySelector('#nav a[href="#patient-new"]');
+    if(navAdd && navAdd.textContent.trim()!== 'Dodaj pacijenta'){
+      navAdd.textContent='Dodaj pacijenta';
+    }
+
+    var route=(location.hash||'').split('?')[0];
+    if(route==='#patients'){
+      var view=document.querySelector('#view');
+      if(view){
+        var links=view.querySelectorAll('a[href="#patient-new"]');
+        for(var i=links.length-1;i>=0;i--){
+          var txt=(links[i].textContent||'').trim().toLowerCase();
+          if(txt.indexOf('dodaj pacijenta')>=0){
+            try{links[i].parentNode.removeChild(links[i]);}catch(e){}
+          }
+        }
+      }
+    }
+  }
+
+  function run(){
     cleanHeader();
-    setTimeout(cleanHeader,50);
-    setTimeout(cleanHeader,250);
-    setTimeout(cleanHeader,750);
+    cleanPatientUi();
+  }
+
+  function scheduleClean(){
+    run();
+    setTimeout(run,50);
+    setTimeout(run,250);
+    setTimeout(run,750);
   }
 
   document.addEventListener('DOMContentLoaded',scheduleClean);
@@ -32,13 +58,13 @@
   window.addEventListener('storage',scheduleClean);
 
   try{
-    var obs=new MutationObserver(function(){cleanHeader();});
+    var obs=new MutationObserver(function(){run();});
     obs.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
   }catch(e){}
 
   var n=0;
   var iv=setInterval(function(){
-    cleanHeader();
+    run();
     n++;
     if(n>40)clearInterval(iv);
   },250);
