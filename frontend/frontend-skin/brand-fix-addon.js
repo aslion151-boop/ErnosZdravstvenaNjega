@@ -1,26 +1,47 @@
-/* Ernos Zdravstvena Njega - minimal header cleanup only */
+/* Ernos Zdravstvena Njega - remove legacy tenant badge only */
 (function(){
-  var timer=null;
+  if(window.__ernosMinimalBrandFixLoaded)return;
+  window.__ernosMinimalBrandFixLoaded=true;
+
+  function isLegacyTenantText(txt){
+    txt=String(txt||'').trim().toLowerCase();
+    return txt.indexOf('mount sackville')>=0 || txt.indexOf('nursing home')>=0 || txt.indexOf('sackville')>=0;
+  }
 
   function cleanHeader(){
     var badge=document.querySelector('#userBadge');
-    if(badge){
-      var tags=badge.querySelectorAll('.tag');
-      for(var i=tags.length-1;i>=0;i--){
-        var txt=(tags[i].textContent||'').trim().toLowerCase();
-        if(txt.indexOf('mount sackville')>=0 || txt.indexOf('nursing home')>=0 || txt.indexOf('sackville')>=0){
-          tags[i].parentNode.removeChild(tags[i]);
-        }
+    if(!badge)return;
+    var tags=badge.querySelectorAll('.tag');
+    for(var i=tags.length-1;i>=0;i--){
+      var txt=tags[i].textContent||'';
+      if(isLegacyTenantText(txt)){
+        try{tags[i].parentNode.removeChild(tags[i]);}catch(e){}
       }
     }
   }
 
-  function schedule(){
-    if(timer)clearTimeout(timer);
-    timer=setTimeout(function(){timer=null;cleanHeader();},150);
+  function scheduleClean(){
+    cleanHeader();
+    setTimeout(cleanHeader,50);
+    setTimeout(cleanHeader,250);
+    setTimeout(cleanHeader,750);
   }
 
-  document.addEventListener('DOMContentLoaded',schedule);
-  window.addEventListener('hashchange',schedule);
-  if(document.readyState!=='loading')schedule();
+  document.addEventListener('DOMContentLoaded',scheduleClean);
+  window.addEventListener('hashchange',scheduleClean);
+  window.addEventListener('storage',scheduleClean);
+
+  try{
+    var obs=new MutationObserver(function(){cleanHeader();});
+    obs.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+  }catch(e){}
+
+  var n=0;
+  var iv=setInterval(function(){
+    cleanHeader();
+    n++;
+    if(n>40)clearInterval(iv);
+  },250);
+
+  if(document.readyState!=='loading')scheduleClean();
 })();
