@@ -131,7 +131,7 @@
       ['#dashboard', 'Početna'],
       ['#today', 'Danas'],
       ['#patients', 'Pacijenti'],
-      ['#patient-new', '+ Dodaj pacijenta'],
+      ['#patient-new', 'Dodaj pacijenta'],
       ['#visits', 'Posjete'],
       ['#qr', 'QR / NFC'],
       ['#staff', 'Djelatnici'],
@@ -195,7 +195,7 @@
       '<div class="card" style="padding:24px">' +
         '<div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center">' +
           '<div><h2 style="margin-bottom:6px">Dobrodošli' + esc(hello) + '</h2><p class="muted" style="max-width:680px">Jednostavna radna ploča za kućnu zdravstvenu njegu. Pacijenti su odmah dostupni kao lista, a dodavanje pacijenta je odvojeno.</p></div>' +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#patient-new">+ Dodaj pacijenta</a><a class="btn ghost" href="#patients">Lista pacijenata</a><a class="btn ghost" href="#today">Danas</a></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#patient-new">Dodaj pacijenta</a><a class="btn ghost" href="#patients">Lista pacijenata</a><a class="btn ghost" href="#today">Danas</a></div>' +
         '</div>' +
       '</div>' +
       '<div class="grid cols-3">' +
@@ -205,7 +205,7 @@
       '</div>' +
       '<div class="card"><h3>Preporučeni red rada</h3>' +
         '<div class="grid cols-3">' +
-          '<div>' + tag('1', 'ok') + '<p><strong>Otvori listu pacijenata</strong><br><span class="muted">Pacijenti su sada odvojeni od unosa.</span></p></div>' +
+          '<div>' + tag('1', 'ok') + '<p><strong>Otvori listu pacijenata</strong><br><span class="muted">Pacijenti su odvojeni od unosa.</span></p></div>' +
           '<div>' + tag('2', 'warn') + '<p><strong>Dodaj novog po potrebi</strong><br><span class="muted">Nova forma je zasebna stavka u sidebaru.</span></p></div>' +
           '<div>' + tag('3', 'ok') + '<p><strong>Scan QR/NFC</strong><br><span class="muted">Workflow ostaje isti: scan/tap za početak i završetak.</span></p></div>' +
         '</div>' +
@@ -234,7 +234,7 @@
     wrap.innerHTML = '<div class="empty">Učitavanje...</div>';
     api('/api/patients').then(function (data) {
       var items = data.items || [];
-      if (!items.length) { wrap.innerHTML = '<div class="empty">Još nema pacijenata. Klikni “Dodaj pacijenta” u sidebaru.</div>'; return; }
+      if (!items.length) { wrap.innerHTML = '<div class="empty">Još nema pacijenata. Koristi “Dodaj pacijenta” u sidebaru.</div>'; return; }
       var rows = '';
       for (var i = 0; i < items.length; i++) rows += patientRow(items[i]);
       wrap.innerHTML = '' +
@@ -269,7 +269,7 @@
     var view = $('#view');
     if (!view) return;
     view.innerHTML = '' +
-      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Pacijenti</h2><p class="muted">Lista pacijenata je odmah dostupna. Dodavanje je odvojeno u sidebaru.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#patient-new">+ Dodaj pacijenta</a><button class="btn ghost" type="button" id="refreshPatients">Osvježi</button></div></div>' +
+      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Pacijenti</h2><p class="muted">Lista pacijenata je odmah dostupna. Dodavanje je odvojeno u sidebaru.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" type="button" id="refreshPatients">Osvježi</button></div></div>' +
       '<div class="card"><h3>Popis pacijenata</h3><div id="patientsList"></div></div>';
     var refresh = $('#refreshPatients');
     if (refresh) refresh.addEventListener('click', loadPatients);
@@ -282,7 +282,7 @@
     var view = $('#view');
     if (!view) return;
     view.innerHTML = '' +
-      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Dodaj pacijenta</h2><p class="muted">Ovo je sada zaseban ekran. Upiši osnovno, ostalo možeš dopuniti kasnije.</p></div><a class="btn ghost" href="#patients">Natrag na listu</a></div>' +
+      '<div class="card" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><h2>Dodaj pacijenta</h2><p class="muted">Ovo je zaseban ekran. Upiši osnovno, ostalo možeš dopuniti kasnije.</p></div><a class="btn ghost" href="#patients">Natrag na listu</a></div>' +
       '<div class="card"><h3>Osnovni podaci</h3>' +
         '<form id="patientForm" class="grid cols-3" autocomplete="off">' +
           '<div><label>Ime</label><input name="first_name" required></div>' +
