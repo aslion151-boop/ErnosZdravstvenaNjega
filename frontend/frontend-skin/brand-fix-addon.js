@@ -1,10 +1,12 @@
-/* Ernos Zdravstvena Njega - small safe UI cleanup */
+/* Ernos Zdravstvena Njega - safe UI cleanup */
 (function(){
-  if(window.__ernosMinimalBrandFixLoaded)return;
-  window.__ernosMinimalBrandFixLoaded=true;
+  if(window.__ernosSafeUiCleanupLoaded)return;
+  window.__ernosSafeUiCleanupLoaded=true;
+
+  function norm(v){return String(v||'').replace(/\s+/g,' ').trim().toLowerCase();}
 
   function isLegacyTenantText(txt){
-    txt=String(txt||'').trim().toLowerCase();
+    txt=norm(txt);
     return txt.indexOf('mount sackville')>=0 || txt.indexOf('nursing home')>=0 || txt.indexOf('sackville')>=0;
   }
 
@@ -13,44 +15,68 @@
     if(!badge)return;
     var tags=badge.querySelectorAll('.tag');
     for(var i=tags.length-1;i>=0;i--){
-      var txt=tags[i].textContent||'';
-      if(isLegacyTenantText(txt)){
-        try{tags[i].parentNode.removeChild(tags[i]);}catch(e){}
+      if(isLegacyTenantText(tags[i].textContent||'')){
+        try{tags[i].remove();}catch(e){}
       }
     }
   }
 
-  function removeHelperCopy(){
+  function shouldRemoveParagraph(txt){
+    txt=norm(txt);
+    return txt.indexOf('lista pacijenata je odmah dostupna')>=0 ||
+           txt.indexOf('dodavanje je odvojeno u sidebaru')>=0 ||
+           txt.indexOf('ovo je zaseban ekran')>=0 ||
+           txt.indexOf('upiši osnovno')>=0 ||
+           txt.indexOf('upisi osnovno')>=0 ||
+           txt.indexOf('ostalo možeš dopuniti kasnije')>=0 ||
+           txt.indexOf('ostalo mozes dopuniti kasnije')>=0;
+  }
+
+  function cleanPatientCopy(){
     var view=document.querySelector('#view');
     if(!view)return;
-    var texts=[
-      'Lista pacijenata je odmah dostupna. Dodavanje je odvojeno u sidebaru.',
-      'Ovo je zaseban ekran. Upiši osnovno, ostalo možeš dopuniti kasnije.'
-    ];
     var ps=view.querySelectorAll('p');
     for(var i=ps.length-1;i>=0;i--){
-      var txt=(ps[i].textContent||'').trim();
-      for(var j=0;j<texts.length;j++){
-        if(txt===texts[j]){
-          try{ps[i].parentNode.removeChild(ps[i]);}catch(e){}
-          break;
-        }
+      if(shouldRemoveParagraph(ps[i].textContent||'')){
+        try{ps[i].remove();}catch(e){}
       }
     }
   }
 
   function run(){
     cleanHeader();
-    removeHelperCopy();
+    cleanPatientCopy();
   }
 
-  function scheduleClean(){
+  function schedule(){
     run();
+    setTimeout(run,0);
     setTimeout(run,50);
     setTimeout(run,250);
+    setTimeout(run,750);
   }
 
-  document.addEventListener('DOMContentLoaded',scheduleClean);
-  window.addEventListener('hashchange',scheduleClean);
-  if(document.readyState!=='loading')scheduleClean();
+  document.addEventListener('DOMContentLoaded',schedule);
+  window.addEventListener('hashchange',schedule);
+  window.addEventListener('load',schedule);
+
+  try{
+    var target=document.querySelector('#view')||document.body||document.documentElement;
+    var queued=false;
+    var obs=new MutationObserver(function(){
+      if(queued)return;
+      queued=true;
+      setTimeout(function(){queued=false;run();},30);
+    });
+    obs.observe(target,{childList:true,subtree:true});
+  }catch(e){}
+
+  var n=0;
+  var iv=setInterval(function(){
+    run();
+    n++;
+    if(n>40)clearInterval(iv);
+  },250);
+
+  if(document.readyState!=='loading')schedule();
 })();
